@@ -1,0 +1,212 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: Go Lambda Backend Resources
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - test
+      - prod
+    Description: Deployment stage (dev, test, prod)
+
+Globals:
+  Function:
+    Runtime: provided.al2
+    Handler: bootstrap
+    MemorySize: 128
+    Timeout: 30
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        AWS_REGION: !Ref AWS::Region
+        STAGE: !Ref Stage
+        DYNAMODB_TABLE: !Ref ItemsTable
+
+Resources:
+  # API Gateway
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Stage
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+        MaxAge: "'600'"
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt UserPool.Arn
+        
+  # Lambda Functions
+  ItemsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../build/items.zip
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ItemsTable
+      Events:
+        GetItem:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /items/{id}
+            Method: GET
+        ListItems:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /items
+            Method: GET
+        CreateItem:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /items
+            Method: POST
+        UpdateItem:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /items/{id}
+            Method: PUT
+        DeleteItem:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /items/{id}
+            Method: DELETE
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref ItemsTable
+          
+  MessageProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../build/message-processor.zip
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ItemsTable
+        - SQSPollerPolicy:
+            QueueName: !GetAtt ProcessingQueue.QueueName
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt ProcessingQueue.Arn
+            BatchSize: 10
+            Enabled: true
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref ItemsTable
+          SQS_QUEUE_URL: !Ref ProcessingQueue
+          
+  # DynamoDB Table for Items
+  ItemsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub items-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: category-index
+          KeySchema:
+            - AttributeName: category
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+        
+  # SQS Queue for asynchronous processing
+  ProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub go-lambda-backend-${Stage}-queue
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 1209600  # 14 days
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 3
+        
+  # Dead Letter Queue for failed messages
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub go-lambda-backend-${Stage}-dlq
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  # Cognito User Pool for authentication
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub go-lambda-backend-${Stage}-users
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false
+  
+  # User Pool Client
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub go-lambda-backend-${Stage}-client
+      GenerateSecret: false
+      AllowedOAuthFlows:
+        - implicit
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      CallbackURLs:
+        - !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/callback
+      SupportedIdentityProviders:
+        - COGNITO
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Stage}/
+  
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+  
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+  
+  DynamoDBTable:
+    Description: DynamoDB Table Name
+    Value: !Ref ItemsTable
+    
+  SQSQueueURL:
+    Description: URL of the Processing Queue
+    Value: !Ref ProcessingQueue

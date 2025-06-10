@@ -1,0 +1,57 @@
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+
+	"github.com/bobbyrathore/go-lambda-backend/internal/handlers"
+	"github.com/bobbyrathore/go-lambda-backend/pkg/repositories"
+	"github.com/bobbyrathore/go-lambda-backend/pkg/services"
+	appConfig "github.com/bobbyrathore/go-lambda-backend/pkg/config"
+)
+
+var (
+	botHandler *handlers.BotHandler
+	cfg        *appConfig.Config
+)
+
+func init() {
+	// Load configuration
+	cfg = appConfig.NewConfig()
+
+	// Initialize AWS SDK
+	awsConfig, err := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion(os.Getenv("REGION")),
+	)
+	if err != nil {
+		log.Fatalf("Unable to load AWS SDK config: %v", err)
+	}
+
+	// Create DynamoDB client
+	dynamoClient := dynamodb.NewFromConfig(awsConfig)
+
+	// Initialize repository
+	botRepo := repositories.NewBotRepository(dynamoClient, os.Getenv("BOTS_TABLE"))
+
+	// Initialize service
+	botService := services.NewBotService(botRepo)
+
+	// Initialize handler
+	botHandler = handlers.NewBotHandler(botService)
+}
+
+// Handler is the Lambda function handler
+func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	// Use the bot handler's routing logic which includes fallback auth
+	return botHandler.HandleBotRequest(ctx, request)
+}
+
+func main() {
+	lambda.Start(Handler)
+}

@@ -1,0 +1,8 @@
+{
+  "environment": "prod",
+  "apiEndpoint": "https://c9wu2knteb.execute-api.us-east-1.amazonaws.com/prod/",
+  "websocketEndpoint": "wss://bh9bgcvljl.execute-api.us-east-1.amazonaws.com/prod",
+  "userPoolId": "us-east-1_6QZ8ANScT",
+  "userPoolClientId": "5gf3gocpg5eu3c01ipeee4tib2",
+  "region": "us-east-1"
+}

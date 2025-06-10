@@ -1,0 +1,2 @@
+This is a placeholder file for the Go Lambda function.
+In a real deployment, this would be replaced with the actual compiled Go binary named 'bootstrap'.

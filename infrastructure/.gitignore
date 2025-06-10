@@ -1,0 +1,12 @@
+node_modules/
+cdk.out/
+dist/
+.cdk.staging/
+.env
+*.js
+!jest.config.js
+*.d.ts
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
