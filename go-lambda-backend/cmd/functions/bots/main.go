@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"os"
 
@@ -48,7 +49,36 @@ func init() {
 
 // Handler is the Lambda function handler
 func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// Use the bot handler's routing logic which includes fallback auth
+	// DEBUG: Log everything about the request
+	log.Printf("=== LAMBDA REQUEST DEBUG ===")
+	log.Printf("HTTP Method: %s", request.HTTPMethod)
+	log.Printf("Path: %s", request.Path)
+	log.Printf("Headers: %+v", request.Headers)
+	log.Printf("RequestContext.RequestId: %s", request.RequestContext.RequestID)
+	log.Printf("RequestContext.Authorizer: %+v", request.RequestContext.Authorizer)
+	
+	// If this is a GET to /bots, return debug info instead of calling handler
+	if request.HTTPMethod == "GET" && request.Path == "/bots" {
+		response := map[string]interface{}{
+			"message": "Lambda reached successfully!",
+			"method": request.HTTPMethod,
+			"path": request.Path,
+			"authorizer": request.RequestContext.Authorizer,
+			"headers": request.Headers,
+		}
+		
+		responseBody, _ := json.Marshal(response)
+		return events.APIGatewayProxyResponse{
+			StatusCode: 200,
+			Headers: map[string]string{
+				"Content-Type": "application/json",
+				"Access-Control-Allow-Origin": "*",
+			},
+			Body: string(responseBody),
+		}, nil
+	}
+	
+	// Use the bot handler's routing logic for other requests
 	return botHandler.HandleBotRequest(ctx, request)
 }
 

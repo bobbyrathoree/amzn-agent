@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -39,7 +40,7 @@ func (h *BotHandler) HandleBotRequest(ctx context.Context, request events.APIGat
 	// Extract user ID from headers or JWT token (simplified for demo)
 	userID := h.extractUserID(request)
 	if userID == "" {
-		return utils.ErrorResponse(http.StatusUnauthorized, "Unauthorized", ""), nil
+		return utils.ErrorResponse(errors.New("unauthorized"), http.StatusUnauthorized), nil
 	}
 
 	switch method {
@@ -63,7 +64,7 @@ func (h *BotHandler) HandleBotRequest(ctx context.Context, request events.APIGat
 		}
 	}
 
-	return utils.ErrorResponse(http.StatusNotFound, "Endpoint not found", ""), nil
+	return utils.ErrorResponse(errors.New("Endpoint not found"), http.StatusNotFound), nil
 }
 
 // listBots handles GET /bots
@@ -74,7 +75,7 @@ func (h *BotHandler) listBots(ctx context.Context, request events.APIGatewayProx
 	
 	bots, err := h.botService.ListBots(ctx, userID, includePublic, starred)
 	if err != nil {
-		return utils.ErrorResponse(http.StatusInternalServerError, "Failed to list bots", err.Error()), nil
+		return utils.ErrorResponse(errors.New("Failed to list bots"), http.StatusInternalServerError), nil
 	}
 
 	response := models.BotsResponse{
@@ -84,7 +85,7 @@ func (h *BotHandler) listBots(ctx context.Context, request events.APIGatewayProx
 		RequestID: h.generateRequestID(),
 	}
 
-	return utils.JSONResponse(http.StatusOK, response), nil
+	return utils.NewAPIResponse(http.StatusOK, response), nil
 }
 
 // getBot handles GET /bots/{id}
@@ -92,12 +93,12 @@ func (h *BotHandler) getBot(ctx context.Context, botID, userID string) (events.A
 	bot, err := h.botService.GetBot(ctx, botID, userID)
 	if err != nil {
 		if err == services.ErrBotNotFound {
-			return utils.ErrorResponse(http.StatusNotFound, "Bot not found", ""), nil
+			return utils.ErrorResponse(errors.New("Bot not found"), http.StatusNotFound), nil
 		}
 		if err == services.ErrUnauthorized {
-			return utils.ErrorResponse(http.StatusForbidden, "Access denied", ""), nil
+			return utils.ErrorResponse(errors.New("Access denied"), http.StatusForbidden), nil
 		}
-		return utils.ErrorResponse(http.StatusInternalServerError, "Failed to get bot", err.Error()), nil
+		return utils.ErrorResponse(errors.New("Failed to get bot"), http.StatusInternalServerError), nil
 	}
 
 	// Update last used time
@@ -108,29 +109,29 @@ func (h *BotHandler) getBot(ctx context.Context, botID, userID string) (events.A
 		RequestID: h.generateRequestID(),
 	}
 
-	return utils.JSONResponse(http.StatusOK, response), nil
+	return utils.NewAPIResponse(http.StatusOK, response), nil
 }
 
 // createBot handles POST /bots
 func (h *BotHandler) createBot(ctx context.Context, request events.APIGatewayProxyRequest, userID string) (events.APIGatewayProxyResponse, error) {
 	var createReq models.CreateBotRequest
 	if err := json.Unmarshal([]byte(request.Body), &createReq); err != nil {
-		return utils.ErrorResponse(http.StatusBadRequest, "Invalid JSON", err.Error()), nil
+		return utils.ErrorResponse(errors.New("Invalid JSON"), http.StatusBadRequest), nil
 	}
 
 	// Validate request
 	if err := h.validator.Struct(&createReq); err != nil {
-		return utils.ErrorResponse(http.StatusBadRequest, "Validation failed", err.Error()), nil
+		return utils.ErrorResponse(errors.New("Validation failed"), http.StatusBadRequest), nil
 	}
 
 	// Set defaults if not provided
 	if len(createReq.ActiveModels) == 0 {
 		createReq.ActiveModels = []string{"anthropic.claude-3-5-sonnet-20241022-v2:0"}
 	}
-	if createReq.GenerationParams == (models.GenerationParams{}) {
+	if createReq.GenerationParams.MaxTokens == 0 {
 		createReq.GenerationParams = models.DefaultGenerationParams()
 	}
-	if createReq.KnowledgeBaseConfig == (models.KnowledgeBaseConfig{}) {
+	if createReq.KnowledgeBaseConfig.MaxResults == 0 {
 		createReq.KnowledgeBaseConfig = models.DefaultKnowledgeBaseConfig()
 	}
 
@@ -155,7 +156,7 @@ func (h *BotHandler) createBot(ctx context.Context, request events.APIGatewayPro
 	}
 
 	if err := h.botService.CreateBot(ctx, bot); err != nil {
-		return utils.ErrorResponse(http.StatusInternalServerError, "Failed to create bot", err.Error()), nil
+		return utils.ErrorResponse(errors.New("Failed to create bot"), http.StatusInternalServerError), nil
 	}
 
 	response := models.BotResponse{
@@ -164,40 +165,40 @@ func (h *BotHandler) createBot(ctx context.Context, request events.APIGatewayPro
 		RequestID: h.generateRequestID(),
 	}
 
-	return utils.JSONResponse(http.StatusCreated, response), nil
+	return utils.NewAPIResponse(http.StatusCreated, response), nil
 }
 
 // updateBot handles PUT/PATCH /bots/{id}
 func (h *BotHandler) updateBot(ctx context.Context, request events.APIGatewayProxyRequest, botID, userID string) (events.APIGatewayProxyResponse, error) {
 	var updateReq models.UpdateBotRequest
 	if err := json.Unmarshal([]byte(request.Body), &updateReq); err != nil {
-		return utils.ErrorResponse(http.StatusBadRequest, "Invalid JSON", err.Error()), nil
+		return utils.ErrorResponse(errors.New("Invalid JSON"), http.StatusBadRequest), nil
 	}
 
 	// Validate request
 	if err := h.validator.Struct(&updateReq); err != nil {
-		return utils.ErrorResponse(http.StatusBadRequest, "Validation failed", err.Error()), nil
+		return utils.ErrorResponse(errors.New("Validation failed"), http.StatusBadRequest), nil
 	}
 
 	// Check if bot exists and user has permission
 	existingBot, err := h.botService.GetBot(ctx, botID, userID)
 	if err != nil {
 		if err == services.ErrBotNotFound {
-			return utils.ErrorResponse(http.StatusNotFound, "Bot not found", ""), nil
+			return utils.ErrorResponse(errors.New("Bot not found"), http.StatusNotFound), nil
 		}
 		if err == services.ErrUnauthorized {
-			return utils.ErrorResponse(http.StatusForbidden, "Access denied", ""), nil
+			return utils.ErrorResponse(errors.New("Access denied"), http.StatusForbidden), nil
 		}
-		return utils.ErrorResponse(http.StatusInternalServerError, "Failed to get bot", err.Error()), nil
+		return utils.ErrorResponse(errors.New("Failed to get bot"), http.StatusInternalServerError), nil
 	}
 
 	// Only owner can modify
 	if existingBot.OwnerUserID != userID {
-		return utils.ErrorResponse(http.StatusForbidden, "Only the owner can modify this bot", ""), nil
+		return utils.ErrorResponse(errors.New("Only the owner can modify this bot"), http.StatusForbidden), nil
 	}
 
 	if err := h.botService.UpdateBot(ctx, botID, &updateReq); err != nil {
-		return utils.ErrorResponse(http.StatusInternalServerError, "Failed to update bot", err.Error()), nil
+		return utils.ErrorResponse(errors.New("Failed to update bot"), http.StatusInternalServerError), nil
 	}
 
 	// Get updated bot
@@ -209,7 +210,7 @@ func (h *BotHandler) updateBot(ctx context.Context, request events.APIGatewayPro
 		RequestID: h.generateRequestID(),
 	}
 
-	return utils.JSONResponse(http.StatusOK, response), nil
+	return utils.NewAPIResponse(http.StatusOK, response), nil
 }
 
 // deleteBot handles DELETE /bots/{id}
@@ -218,21 +219,21 @@ func (h *BotHandler) deleteBot(ctx context.Context, botID, userID string) (event
 	existingBot, err := h.botService.GetBot(ctx, botID, userID)
 	if err != nil {
 		if err == services.ErrBotNotFound {
-			return utils.ErrorResponse(http.StatusNotFound, "Bot not found", ""), nil
+			return utils.ErrorResponse(errors.New("Bot not found"), http.StatusNotFound), nil
 		}
 		if err == services.ErrUnauthorized {
-			return utils.ErrorResponse(http.StatusForbidden, "Access denied", ""), nil
+			return utils.ErrorResponse(errors.New("Access denied"), http.StatusForbidden), nil
 		}
-		return utils.ErrorResponse(http.StatusInternalServerError, "Failed to get bot", err.Error()), nil
+		return utils.ErrorResponse(errors.New("Failed to get bot"), http.StatusInternalServerError), nil
 	}
 
 	// Only owner can delete
 	if existingBot.OwnerUserID != userID {
-		return utils.ErrorResponse(http.StatusForbidden, "Only the owner can delete this bot", ""), nil
+		return utils.ErrorResponse(errors.New("Only the owner can delete this bot"), http.StatusForbidden), nil
 	}
 
 	if err := h.botService.DeleteBot(ctx, botID); err != nil {
-		return utils.ErrorResponse(http.StatusInternalServerError, "Failed to delete bot", err.Error()), nil
+		return utils.ErrorResponse(errors.New("Failed to delete bot"), http.StatusInternalServerError), nil
 	}
 
 	response := models.BotResponse{
@@ -240,18 +241,41 @@ func (h *BotHandler) deleteBot(ctx context.Context, botID, userID string) (event
 		RequestID: h.generateRequestID(),
 	}
 
-	return utils.JSONResponse(http.StatusOK, response), nil
+	return utils.NewAPIResponse(http.StatusOK, response), nil
 }
 
-// extractUserID extracts user ID from request (simplified implementation)
+// extractUserID extracts user ID from request (from Cognito JWT claims)
 func (h *BotHandler) extractUserID(request events.APIGatewayProxyRequest) string {
-	// In a real implementation, extract from JWT token
-	// For demo purposes, use a header or return hardcoded value
-	if userID := request.Headers["X-User-ID"]; userID != "" {
+	// Debug: Log the entire authorizer context
+	fmt.Printf("DEBUG: Full RequestContext.Authorizer: %+v\n", request.RequestContext.Authorizer)
+	
+	// Extract user ID from the authorizer context (Cognito User Pool)
+	if userID, ok := request.RequestContext.Authorizer["sub"].(string); ok {
+		fmt.Printf("DEBUG: Found sub in authorizer context: %s\n", userID)
 		return userID
 	}
-	// For demo/development, return the hardcoded user
-	return "bobrt-user-id"
+	if userID, ok := request.RequestContext.Authorizer["userId"].(string); ok {
+		fmt.Printf("DEBUG: Found userId in authorizer context: %s\n", userID)
+		return userID
+	}
+	
+	// Check for claims in different format
+	if claims, ok := request.RequestContext.Authorizer["claims"].(map[string]interface{}); ok {
+		fmt.Printf("DEBUG: Found claims in authorizer context: %+v\n", claims)
+		if sub, exists := claims["sub"].(string); exists {
+			fmt.Printf("DEBUG: Found sub in claims: %s\n", sub)
+			return sub
+		}
+	}
+	
+	// Legacy fallback for development
+	if userID := request.Headers["X-User-ID"]; userID != "" {
+		fmt.Printf("DEBUG: Using X-User-ID header: %s\n", userID)
+		return userID
+	}
+	
+	fmt.Printf("DEBUG: No user ID found anywhere\n")
+	return ""
 }
 
 // generateRequestID generates a unique request ID

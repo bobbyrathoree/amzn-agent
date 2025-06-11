@@ -16,11 +16,11 @@ var (
 
 // BotService handles business logic for bot operations
 type BotService struct {
-	botRepo *repositories.BotRepository
+	botRepo repositories.BotRepository
 }
 
 // NewBotService creates a new BotService
-func NewBotService(botRepo *repositories.BotRepository) *BotService {
+func NewBotService(botRepo repositories.BotRepository) *BotService {
 	return &BotService{
 		botRepo: botRepo,
 	}

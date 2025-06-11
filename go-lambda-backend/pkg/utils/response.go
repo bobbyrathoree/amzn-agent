@@ -20,7 +20,7 @@ func NewAPIResponse(statusCode int, body interface{}) events.APIGatewayProxyResp
 		"Content-Type":                 "application/json",
 		"Access-Control-Allow-Origin":  "*", // For CORS support
 		"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-		"Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+		"Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,x-user-id",
 	}
 
 	bodyBytes, err := json.Marshal(body)
@@ -70,7 +70,7 @@ func NoContentResponse() events.APIGatewayProxyResponse {
 			"Content-Type":                 "application/json",
 			"Access-Control-Allow-Origin":  "*",
 			"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-			"Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+			"Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,x-user-id",
 		},
 	}
 }

@@ -9,7 +9,6 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as path from 'path';
-import * as fs from 'fs';
 import { Construct } from 'constructs';
 import { Config } from './config';
 
@@ -38,6 +37,9 @@ export class ApiStack extends cdk.Stack {
     this.apiGateway = new apigateway.RestApi(this, 'RestApi', {
       restApiName: `${props.config.prefix}API`,
       description: 'API for the AI Chat Platform',
+      endpointConfiguration: {
+        types: [apigateway.EndpointType.REGIONAL]
+      },
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,
         allowMethods: apigateway.Cors.ALL_METHODS,
@@ -178,20 +180,14 @@ export class ApiStack extends cdk.Stack {
       REGION: props.env?.region || 'us-east-1',
     };
     
-    // Create a temporary directory with a placeholder file for the Lambda code
-    // In a real implementation, this would point to your actual Go Lambda code
-    const tempDir = `/tmp/lambda-${id}-${Date.now()}`;
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-      fs.writeFileSync(`${tempDir}/bootstrap`, '#!/bin/sh\necho "This is a placeholder Lambda function"');
-      fs.chmodSync(`${tempDir}/bootstrap`, 0o755);
-    }
+    // Path to the actual Go Lambda binary
+    const lambdaPath = path.join(__dirname, '../../lambda/functions', handlerDir);
     
     // Create the Lambda function
     const fn = new lambda.Function(this, id, {
       runtime: lambda.Runtime.PROVIDED_AL2,
       handler: 'bootstrap',
-      code: lambda.Code.fromAsset(tempDir),
+      code: lambda.Code.fromAsset(lambdaPath),
       memorySize: props.config.lambdaMemory,
       timeout: props.config.lambdaTimeout,
       environment,

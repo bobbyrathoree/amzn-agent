@@ -13,6 +13,7 @@ export interface AuthStackProps extends cdk.StackProps {
 export class AuthStack extends cdk.Stack {
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
+  public readonly identityPool: cognito.CfnIdentityPool;
   
   constructor(scope: Construct, id: string, props: AuthStackProps) {
     super(scope, id, props);
@@ -99,6 +100,45 @@ export class AuthStack extends cdk.Stack {
       value: this.userPoolClient.userPoolClientId,
       description: 'User Pool Client ID',
       exportName: `${props.config.prefix}UserPoolClientId`,
+    });
+    
+    // Create identity pool for federated identities
+    this.identityPool = new cognito.CfnIdentityPool(this, 'IdentityPool', {
+      identityPoolName: `${props.config.prefix}IdentityPool`,
+      allowUnauthenticatedIdentities: false,
+      cognitoIdentityProviders: [{
+        clientId: this.userPoolClient.userPoolClientId,
+        providerName: this.userPool.userPoolProviderName,
+      }],
+    });
+    
+    // Create roles for authenticated and unauthenticated users
+    const authenticatedRole = new iam.Role(this, 'AuthenticatedRole', {
+      assumedBy: new iam.FederatedPrincipal('cognito-identity.amazonaws.com', {
+        StringEquals: {
+          'cognito-identity.amazonaws.com:aud': this.identityPool.ref,
+        },
+        'ForAnyValue:StringLike': {
+          'cognito-identity.amazonaws.com:amr': 'authenticated',
+        },
+      }),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess'),
+      ],
+    });
+    
+    // Attach roles to identity pool
+    new cognito.CfnIdentityPoolRoleAttachment(this, 'IdentityPoolRoleAttachment', {
+      identityPoolId: this.identityPool.ref,
+      roles: {
+        authenticated: authenticatedRole.roleArn,
+      },
+    });
+    
+    new cdk.CfnOutput(this, 'IdentityPoolId', {
+      value: this.identityPool.ref,
+      description: 'Identity Pool ID',
+      exportName: `${props.config.prefix}IdentityPoolId`,
     });
   }
 }

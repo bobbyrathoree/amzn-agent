@@ -33,28 +33,28 @@ func NewChatService(
 // CreateChatMessage creates a new chat message and gets a response
 func (s *ChatService) CreateChatMessage(ctx context.Context, input models.ChatInput, userID string) (*models.ChatResponse, error) {
 	// Get the bot information
-	bot, err := s.botRepo.GetBot(ctx, input.BotID, userID)
+	bot, err := s.botRepo.GetByID(ctx, input.BotID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Add system prompt from bot if not provided
-	if input.SystemPrompt == "" && bot.SystemPrompt != "" {
-		input.SystemPrompt = bot.SystemPrompt
+	if input.SystemPrompt == "" && bot.Instruction != "" {
+		input.SystemPrompt = bot.Instruction
 	}
 
 	// Set default model from bot if not provided
-	if input.ModelID == "" && bot.DefaultModel != "" {
-		input.ModelID = bot.DefaultModel
+	if input.ModelID == "" && len(bot.ActiveModels) > 0 {
+		input.ModelID = bot.ActiveModels[0]
 	}
 
 	// Set temperature and max tokens from bot if not provided
-	if input.Temperature == 0 && bot.Temperature > 0 {
-		input.Temperature = bot.Temperature
+	if input.Temperature == 0 && bot.GenerationParams.Temperature > 0 {
+		input.Temperature = bot.GenerationParams.Temperature
 	}
 
-	if input.MaxTokens == 0 && bot.MaxTokens > 0 {
-		input.MaxTokens = bot.MaxTokens
+	if input.MaxTokens == 0 && bot.GenerationParams.MaxTokens > 0 {
+		input.MaxTokens = bot.GenerationParams.MaxTokens
 	}
 
 	// Generate response from Bedrock

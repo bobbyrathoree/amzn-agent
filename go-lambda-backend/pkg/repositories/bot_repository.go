@@ -12,22 +12,34 @@ import (
 	"github.com/bobbyrathore/go-lambda-backend/pkg/models"
 )
 
-// BotRepository handles data persistence for bots
-type BotRepository struct {
+// BotRepository provides methods to interact with bot storage
+type BotRepository interface {
+	Create(ctx context.Context, bot *models.Bot) error
+	GetByID(ctx context.Context, botID string) (*models.Bot, error)
+	GetByOwner(ctx context.Context, ownerUserID string) ([]models.Bot, error)
+	GetPublicBots(ctx context.Context) ([]models.Bot, error)
+	Update(ctx context.Context, botID string, updateReq *models.UpdateBotRequest) error
+	Delete(ctx context.Context, botID string) error
+	UpdateLastUsedTime(ctx context.Context, botID string, lastUsedTime time.Time) error
+	UpdateStarred(ctx context.Context, botID string, starred bool) error
+}
+
+// DynamoBotRepository handles data persistence for bots using DynamoDB
+type DynamoBotRepository struct {
 	client    *dynamodb.Client
 	tableName string
 }
 
 // NewBotRepository creates a new BotRepository
-func NewBotRepository(client *dynamodb.Client, tableName string) *BotRepository {
-	return &BotRepository{
+func NewBotRepository(client *dynamodb.Client, tableName string) BotRepository {
+	return &DynamoBotRepository{
 		client:    client,
 		tableName: tableName,
 	}
 }
 
 // Create creates a new bot in DynamoDB
-func (r *BotRepository) Create(ctx context.Context, bot *models.Bot) error {
+func (r *DynamoBotRepository) Create(ctx context.Context, bot *models.Bot) error {
 	item, err := attributevalue.MarshalMap(bot)
 	if err != nil {
 		return err
@@ -43,7 +55,7 @@ func (r *BotRepository) Create(ctx context.Context, bot *models.Bot) error {
 }
 
 // GetByID retrieves a bot by its ID
-func (r *BotRepository) GetByID(ctx context.Context, botID string) (*models.Bot, error) {
+func (r *DynamoBotRepository) GetByID(ctx context.Context, botID string) (*models.Bot, error) {
 	result, err := r.client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(r.tableName),
 		Key: map[string]types.AttributeValue{
@@ -68,7 +80,7 @@ func (r *BotRepository) GetByID(ctx context.Context, botID string) (*models.Bot,
 }
 
 // GetByOwner retrieves all bots owned by a specific user
-func (r *BotRepository) GetByOwner(ctx context.Context, ownerUserID string) ([]models.Bot, error) {
+func (r *DynamoBotRepository) GetByOwner(ctx context.Context, ownerUserID string) ([]models.Bot, error) {
 	result, err := r.client.Scan(ctx, &dynamodb.ScanInput{
 		TableName:        aws.String(r.tableName),
 		FilterExpression: aws.String("ownerUserId = :ownerUserId"),
@@ -90,7 +102,7 @@ func (r *BotRepository) GetByOwner(ctx context.Context, ownerUserID string) ([]m
 }
 
 // GetPublicBots retrieves all public bots
-func (r *BotRepository) GetPublicBots(ctx context.Context) ([]models.Bot, error) {
+func (r *DynamoBotRepository) GetPublicBots(ctx context.Context) ([]models.Bot, error) {
 	result, err := r.client.Scan(ctx, &dynamodb.ScanInput{
 		TableName:        aws.String(r.tableName),
 		FilterExpression: aws.String("isPublic = :isPublic"),
@@ -112,7 +124,7 @@ func (r *BotRepository) GetPublicBots(ctx context.Context) ([]models.Bot, error)
 }
 
 // Update updates an existing bot
-func (r *BotRepository) Update(ctx context.Context, botID string, updateReq *models.UpdateBotRequest) error {
+func (r *DynamoBotRepository) Update(ctx context.Context, botID string, updateReq *models.UpdateBotRequest) error {
 	updateExpression := "SET "
 	expressionAttributeValues := make(map[string]types.AttributeValue)
 	expressionAttributeNames := make(map[string]string)
@@ -225,7 +237,7 @@ func (r *BotRepository) Update(ctx context.Context, botID string, updateReq *mod
 }
 
 // Delete deletes a bot by its ID
-func (r *BotRepository) Delete(ctx context.Context, botID string) error {
+func (r *DynamoBotRepository) Delete(ctx context.Context, botID string) error {
 	_, err := r.client.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(r.tableName),
 		Key: map[string]types.AttributeValue{
@@ -238,7 +250,7 @@ func (r *BotRepository) Delete(ctx context.Context, botID string) error {
 }
 
 // UpdateLastUsedTime updates the last used timestamp for a bot
-func (r *BotRepository) UpdateLastUsedTime(ctx context.Context, botID string, lastUsedTime time.Time) error {
+func (r *DynamoBotRepository) UpdateLastUsedTime(ctx context.Context, botID string, lastUsedTime time.Time) error {
 	_, err := r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(r.tableName),
 		Key: map[string]types.AttributeValue{
@@ -255,7 +267,7 @@ func (r *BotRepository) UpdateLastUsedTime(ctx context.Context, botID string, la
 }
 
 // UpdateStarred updates the starred status of a bot
-func (r *BotRepository) UpdateStarred(ctx context.Context, botID string, starred bool) error {
+func (r *DynamoBotRepository) UpdateStarred(ctx context.Context, botID string, starred bool) error {
 	_, err := r.client.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(r.tableName),
 		Key: map[string]types.AttributeValue{

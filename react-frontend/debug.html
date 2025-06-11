@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Auth</title>
+</head>
+<body>
+    <h1>Debug Authentication</h1>
+    <button onclick="testConfig()">Test Config</button>
+    <button onclick="testAPI()">Test API</button>
+    <div id="output"></div>
+
+    <script>
+        function log(msg) {
+            document.getElementById('output').innerHTML += '<pre>' + JSON.stringify(msg, null, 2) + '</pre>';
+        }
+
+        async function testConfig() {
+            try {
+                const response = await fetch('/config.json');
+                const config = await response.json();
+                log('Config loaded:', config);
+            } catch (error) {
+                log('Config error:', error.message);
+                
+                // Try environment variables
+                const config = {
+                    userPoolId: 'us-east-1_6QZ8ANScT',
+                    userPoolClientId: '5gf3gocpg5eu3c01ipeee4tib2',
+                    apiEndpoint: 'https://c9wu2knteb.execute-api.us-east-1.amazonaws.com/prod'
+                };
+                log('Using fallback config:', config);
+            }
+        }
+
+        async function testAPI() {
+            try {
+                const response = await fetch('https://c9wu2knteb.execute-api.us-east-1.amazonaws.com/prod/bots', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-ID': 'test-user'
+                    }
+                });
+                
+                log('API Response Status:', response.status);
+                log('API Response Headers:', Object.fromEntries(response.headers.entries()));
+                
+                const text = await response.text();
+                log('API Response Body:', text);
+                
+                try {
+                    const json = JSON.parse(text);
+                    log('Parsed JSON:', json);
+                } catch (e) {
+                    log('Not JSON response');
+                }
+            } catch (error) {
+                log('API Error:', error.message);
+            }
+        }
+    </script>
+</body>
+</html>

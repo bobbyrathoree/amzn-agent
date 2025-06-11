@@ -46,9 +46,6 @@ func (h *ChatHandler) HandleChatMessage(ctx context.Context, request events.APIG
 	// Call the service to create the chat message
 	response, err := h.service.CreateChatMessage(ctx, req, userID)
 	if err != nil {
-		if err == models.ErrBotNotFound {
-			return utils.ErrorResponse(err, http.StatusNotFound), nil
-		}
 		if err == models.ErrNotAuthorized {
 			return utils.ErrorResponse(err, http.StatusForbidden), nil
 		}

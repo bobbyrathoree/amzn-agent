@@ -7,7 +7,6 @@ import { StorageStack } from '../lib/storage-stack';
 import { AuthStack } from '../lib/auth-stack';
 import { ApiStack } from '../lib/api-stack';
 import { FrontendStack } from '../lib/frontend-stack';
-import { SimpleFrontendStack } from '../lib/simple-frontend-stack';
 import { MonitoringStack } from '../lib/monitoring-stack';
 
 // Load environment variables
@@ -64,11 +63,20 @@ apiStack.addDependency(storageStack);
 apiStack.addDependency(authStack);
 // apiStack.addDependency(authLambdaStack); // Commented out for now
 
-// Use the simplified frontend stack without dependencies 
-const frontendStack = new SimpleFrontendStack(app, `${config.prefix}FrontendStack`, {
+// Create proper frontend stack with React support
+const frontendStack = new FrontendStack(app, `${config.prefix}FrontendStack`, {
   env: config.envProps,
   config,
+  userPool: authStack.userPool,
+  userPoolClient: authStack.userPoolClient,
+  identityPool: authStack.identityPool,
+  apiEndpoint: apiStack.apiEndpoint,
+  websocketEndpoint: apiStack.websocketEndpoint,
 });
+
+// Add dependencies
+frontendStack.addDependency(authStack);
+frontendStack.addDependency(apiStack);
 
 const monitoringStack = new MonitoringStack(app, `${config.prefix}MonitoringStack`, {
   env: config.envProps,
@@ -85,7 +93,7 @@ monitoringStack.addDependency(storageStack);
 // Apply tags to all stacks
 const tags = {
   Environment: env,
-  Project: 'AIChatPlatform',
+  Project: 'AmazonBuddy',
   ManagedBy: 'CDK',
 };
 

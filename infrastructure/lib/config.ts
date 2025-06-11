@@ -13,7 +13,7 @@ export class Config {
   
   constructor(environment: string) {
     this.env = environment;
-    this.prefix = `${this.env}-AIChatPlatform-`;
+    this.prefix = `${this.env}-AmazonBuddy-`;
     
     this.envProps = {
       account: process.env.CDK_DEFAULT_ACCOUNT,

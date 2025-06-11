@@ -210,13 +210,39 @@ fi
 # Create directory for compiled Lambda functions if it doesn't exist
 mkdir -p lambda/functions/{chat,bots,knowledge,websocket}
 
-# Build the frontend
+# Build the frontend - prioritize React app over Next.js
 echo "Building frontend application..."
-if [ -d "frontend" ]; then
+
+# Try to build React app first (preferred)
+if [ -d "react-frontend" ]; then
+    (
+        cd react-frontend
+        if [ -f "package.json" ]; then
+            echo "Installing React frontend dependencies..."
+            npm install
+            echo "Building React application for production..."
+            
+            # Clean previous builds
+            rm -rf dist
+            
+            npm run build
+            BUILD_STATUS=$?
+            
+            if [ $BUILD_STATUS -eq 0 ]; then
+                echo "✅ React frontend build completed successfully!"
+            else
+                echo "❌ React frontend build failed!"
+            fi
+        else
+            echo "No package.json found in react-frontend directory."
+        fi
+    )
+elif [ -d "frontend" ]; then
+    # Fallback to Next.js build
     (
         cd frontend
         if [ -f "package.json" ]; then
-            echo "Installing frontend dependencies..."
+            echo "Installing Next.js frontend dependencies..."
             npm install
             echo "Building Next.js application for production (without API routes)..."
             
@@ -228,9 +254,9 @@ if [ -d "frontend" ]; then
             BUILD_STATUS=$?
             
             if [ $BUILD_STATUS -eq 0 ]; then
-                echo "Frontend build completed successfully!"
+                echo "Next.js frontend build completed successfully!"
             else
-                echo "Warning: Frontend build failed, using fallback HTML."
+                echo "Warning: Next.js frontend build failed, using fallback HTML."
             fi
         else
             echo "No package.json found in frontend directory."
