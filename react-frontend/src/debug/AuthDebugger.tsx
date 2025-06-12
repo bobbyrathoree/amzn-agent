@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useAuth } from '../components/AuthProvider';
+import { useApiClient } from '../lib/api';
 
 export function AuthDebugger() {
   const { user, getAccessToken } = useAuth();
+  const apiClient = useApiClient(getAccessToken, () => user?.userId || user?.username || null);
   const [debugOutput, setDebugOutput] = useState<string>('');
 
   const log = (message: string, data?: any) => {
@@ -35,14 +37,13 @@ export function AuthDebugger() {
       }
       
       // Test 4: Test API call to bots endpoint
-      log('Testing API call to /api/bots...');
-      const response = await fetch('/api/bots', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-User-ID': user?.userId || user?.username || 'unknown',
-          'Content-Type': 'application/json'
-        }
-      });
+      log('Testing API call via API client...');
+      if (!apiClient) {
+        log('API client not available');
+        return;
+      }
+      
+      const response = await apiClient.get('bots');
       
       log('API Response Status:', response.status);
       log('API Response Headers:', Object.fromEntries(response.headers.entries()));

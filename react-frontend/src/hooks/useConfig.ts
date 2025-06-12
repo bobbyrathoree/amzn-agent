@@ -48,7 +48,6 @@ export function useConfig() {
           environment: 'development',
           userPoolId: import.meta.env.VITE_USER_POOL_ID || '',
           userPoolClientId: import.meta.env.VITE_USER_POOL_CLIENT_ID || '',
-          identityPoolId: import.meta.env.VITE_IDENTITY_POOL_ID || '',
           apiEndpoint: import.meta.env.VITE_API_ENDPOINT || 'https://c9wu2knteb.execute-api.us-east-1.amazonaws.com/prod',
           websocketEndpoint: import.meta.env.VITE_WEBSOCKET_ENDPOINT || 'wss://bh9bgcvljl.execute-api.us-east-1.amazonaws.com/prod',
           region: import.meta.env.VITE_AWS_REGION || 'us-east-1'

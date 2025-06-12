@@ -11,7 +11,7 @@ export const configureAmplify = (config: Config) => {
       Cognito: {
         userPoolId: config.userPoolId,
         userPoolClientId: config.userPoolClientId,
-        identityPoolId: config.identityPoolId,
+        region: config.region,
         signUpVerificationMethod: 'code' as const,
         loginWith: {
           email: true,
@@ -23,10 +23,12 @@ export const configureAmplify = (config: Config) => {
 
   Amplify.configure(amplifyConfig);
   isConfigured = true;
-  console.log('Amplify configured with:', { 
+  console.log('🔧 Amplify configured with:', { 
     userPoolId: config.userPoolId,
+    userPoolClientId: config.userPoolClientId.substring(0, 10) + '...',
     region: config.region 
   });
+  console.log('🔧 Full Amplify config:', amplifyConfig);
 };
 
 export { Amplify };

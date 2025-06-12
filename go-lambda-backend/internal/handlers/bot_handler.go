@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/go-playground/validator/v10"
@@ -37,8 +36,8 @@ func (h *BotHandler) HandleBotRequest(ctx context.Context, request events.APIGat
 	method := request.HTTPMethod
 	pathSegments := strings.Split(strings.Trim(request.Path, "/"), "/")
 	
-	// Extract user ID from headers or JWT token (simplified for demo)
-	userID := h.extractUserID(request)
+	// Extract user ID and groups from JWT token
+	userID, userGroups := h.extractUserInfoFromJWT(request)
 	if userID == "" {
 		return utils.ErrorResponse(errors.New("unauthorized"), http.StatusUnauthorized), nil
 	}
@@ -46,9 +45,31 @@ func (h *BotHandler) HandleBotRequest(ctx context.Context, request events.APIGat
 	switch method {
 	case "GET":
 		if len(pathSegments) == 1 { // GET /bots
-			return h.listBots(ctx, request, userID)
-		} else if len(pathSegments) == 2 { // GET /bots/{id}
-			return h.getBot(ctx, pathSegments[1], userID)
+			return h.listBots(ctx, request, userID, userGroups)
+		} else if len(pathSegments) == 2 {
+			if pathSegments[1] == "public" { // GET /bots/public
+				return h.listPublicBots(ctx, request)
+			} else if pathSegments[1] == "pinned" { // GET /bots/pinned
+				return h.listPinnedBots(ctx, request)
+			} else if pathSegments[1] == "shared" { // GET /bots/shared
+				return h.listSharedBots(ctx, request, userID, userGroups)
+			} else if pathSegments[1] == "search" { // GET /bots/search
+				return h.searchBots(ctx, request, userID, userGroups)
+			} else if pathSegments[1] == "popular" { // GET /bots/popular
+				return h.getPopularBots(ctx, request, userID, userGroups)
+			} else if pathSegments[1] == "discovery" { // GET /bots/discovery
+				return h.getDiscoveryBots(ctx, request, userID, userGroups)
+			} else { // GET /bots/{id}
+				return h.getBot(ctx, pathSegments[1], userID, userGroups)
+			}
+		} else if len(pathSegments) == 3 {
+			if pathSegments[2] == "visibility" { // GET /bots/{id}/visibility
+				return h.getBotVisibility(ctx, pathSegments[1], userID)
+			} else if pathSegments[2] == "stack-status" { // GET /bots/{id}/stack-status
+				return h.getBotStackStatus(ctx, pathSegments[1], userID)
+			} else if pathSegments[2] == "summary" { // GET /bots/{id}/summary
+				return h.getBotSummary(ctx, pathSegments[1], userID, userGroups)
+			}
 		}
 	case "POST":
 		if len(pathSegments) == 1 { // POST /bots
@@ -57,6 +78,10 @@ func (h *BotHandler) HandleBotRequest(ctx context.Context, request events.APIGat
 	case "PUT", "PATCH":
 		if len(pathSegments) == 2 { // PUT/PATCH /bots/{id}
 			return h.updateBot(ctx, request, pathSegments[1], userID)
+		} else if len(pathSegments) == 3 && pathSegments[2] == "visibility" { // PATCH /bots/{id}/visibility
+			return h.updateBotVisibility(ctx, request, pathSegments[1], userID)
+		} else if len(pathSegments) == 3 && pathSegments[2] == "starred" { // PATCH /bots/{id}/starred
+			return h.updateBotStarred(ctx, request, pathSegments[1], userID, userGroups)
 		}
 	case "DELETE":
 		if len(pathSegments) == 2 { // DELETE /bots/{id}
@@ -68,20 +93,26 @@ func (h *BotHandler) HandleBotRequest(ctx context.Context, request events.APIGat
 }
 
 // listBots handles GET /bots
-func (h *BotHandler) listBots(ctx context.Context, request events.APIGatewayProxyRequest, userID string) (events.APIGatewayProxyResponse, error) {
+func (h *BotHandler) listBots(ctx context.Context, request events.APIGatewayProxyRequest, userID string, userGroups []string) (events.APIGatewayProxyResponse, error) {
 	// Parse query parameters
-	includePublic := request.QueryStringParameters["includePublic"] == "true"
+	scope := request.QueryStringParameters["scope"] // private, shared, all
 	starred := request.QueryStringParameters["starred"] == "true"
+	limitStr := request.QueryStringParameters["limit"]
+	limit := 100 // default
+	if limitStr != "" {
+		fmt.Sscanf(limitStr, "%d", &limit)
+	}
 	
-	bots, err := h.botService.ListBots(ctx, userID, includePublic, starred)
+	// Get bot summaries based on scope  
+	summaries, err := h.botService.GetBotSummaries(ctx, userID, userGroups, false, scope, starred, limit)
 	if err != nil {
 		return utils.ErrorResponse(errors.New("Failed to list bots"), http.StatusInternalServerError), nil
 	}
 
 	response := models.BotsResponse{
-		Bots:      bots,
-		Count:     len(bots),
-		Total:     len(bots),
+		Bots:      summaries,
+		Count:     len(summaries),
+		Total:     len(summaries),
 		RequestID: h.generateRequestID(),
 	}
 
@@ -89,8 +120,8 @@ func (h *BotHandler) listBots(ctx context.Context, request events.APIGatewayProx
 }
 
 // getBot handles GET /bots/{id}
-func (h *BotHandler) getBot(ctx context.Context, botID, userID string) (events.APIGatewayProxyResponse, error) {
-	bot, err := h.botService.GetBot(ctx, botID, userID)
+func (h *BotHandler) getBot(ctx context.Context, botID, userID string, userGroups []string) (events.APIGatewayProxyResponse, error) {
+	bot, err := h.botService.GetBot(ctx, botID, userID, userGroups, false)
 	if err != nil {
 		if err == services.ErrBotNotFound {
 			return utils.ErrorResponse(errors.New("Bot not found"), http.StatusNotFound), nil
@@ -101,8 +132,8 @@ func (h *BotHandler) getBot(ctx context.Context, botID, userID string) (events.A
 		return utils.ErrorResponse(errors.New("Failed to get bot"), http.StatusInternalServerError), nil
 	}
 
-	// Update last used time
-	_ = h.botService.UpdateLastUsedTime(ctx, botID)
+	// Update usage analytics (last used time + usage count)
+	_ = h.botService.IncrementBotUsage(ctx, botID)
 
 	response := models.BotResponse{
 		Bot:       bot,
@@ -134,34 +165,19 @@ func (h *BotHandler) createBot(ctx context.Context, request events.APIGatewayPro
 	if createReq.KnowledgeBaseConfig.MaxResults == 0 {
 		createReq.KnowledgeBaseConfig = models.DefaultKnowledgeBaseConfig()
 	}
-
-	// Create bot
-	bot := &models.Bot{
-		ID:                    ulid.Make().String(),
-		Title:                 createReq.Title,
-		Description:           createReq.Description,
-		Instruction:           createReq.Instruction,
-		OwnerUserID:           userID,
-		CreateTime:            time.Now(),
-		LastUsedTime:          time.Now(),
-		IsPublic:              createReq.IsPublic,
-		IsStarred:             false,
-		GenerationParams:      createReq.GenerationParams,
-		KnowledgeBaseID:       createReq.KnowledgeBaseID,
-		KnowledgeBaseConfig:   createReq.KnowledgeBaseConfig,
-		ConversationStarters:  createReq.ConversationStarters,
-		ActiveModels:          createReq.ActiveModels,
-		AgentTools:            createReq.AgentTools,
-		DisplayRetrievedChunks: createReq.DisplayRetrievedChunks,
+	if createReq.SharedScope == "" {
+		createReq.SharedScope = models.SharedScopePrivate
 	}
 
-	if err := h.botService.CreateBot(ctx, bot); err != nil {
-		return utils.ErrorResponse(errors.New("Failed to create bot"), http.StatusInternalServerError), nil
+	// Create bot using the service
+	result, err := h.botService.CreateBot(ctx, &createReq, userID, []string{})
+	if err != nil {
+		return utils.ErrorResponse(errors.New("Failed to create bot: " + err.Error()), http.StatusInternalServerError), nil
 	}
 
 	response := models.BotResponse{
-		Bot:       bot,
-		Message:   "Bot created successfully",
+		Bot:       result.Bot,
+		Message:   result.Message,
 		RequestID: h.generateRequestID(),
 	}
 
@@ -181,7 +197,7 @@ func (h *BotHandler) updateBot(ctx context.Context, request events.APIGatewayPro
 	}
 
 	// Check if bot exists and user has permission
-	existingBot, err := h.botService.GetBot(ctx, botID, userID)
+	existingBot, err := h.botService.GetBot(ctx, botID, userID, []string{}, false)
 	if err != nil {
 		if err == services.ErrBotNotFound {
 			return utils.ErrorResponse(errors.New("Bot not found"), http.StatusNotFound), nil
@@ -192,9 +208,9 @@ func (h *BotHandler) updateBot(ctx context.Context, request events.APIGatewayPro
 		return utils.ErrorResponse(errors.New("Failed to get bot"), http.StatusInternalServerError), nil
 	}
 
-	// Only owner can modify
-	if existingBot.OwnerUserID != userID {
-		return utils.ErrorResponse(errors.New("Only the owner can modify this bot"), http.StatusForbidden), nil
+	// Check edit permissions
+	if !existingBot.IsEditableByUser(userID, []string{}, false) {
+		return utils.ErrorResponse(errors.New("Access denied: you can only edit bots you own"), http.StatusForbidden), nil
 	}
 
 	if err := h.botService.UpdateBot(ctx, botID, &updateReq); err != nil {
@@ -202,7 +218,7 @@ func (h *BotHandler) updateBot(ctx context.Context, request events.APIGatewayPro
 	}
 
 	// Get updated bot
-	updatedBot, _ := h.botService.GetBot(ctx, botID, userID)
+	updatedBot, _ := h.botService.GetBot(ctx, botID, userID, []string{}, false)
 
 	response := models.BotResponse{
 		Bot:       updatedBot,
@@ -215,24 +231,14 @@ func (h *BotHandler) updateBot(ctx context.Context, request events.APIGatewayPro
 
 // deleteBot handles DELETE /bots/{id}
 func (h *BotHandler) deleteBot(ctx context.Context, botID, userID string) (events.APIGatewayProxyResponse, error) {
-	// Check if bot exists and user has permission
-	existingBot, err := h.botService.GetBot(ctx, botID, userID)
-	if err != nil {
+	// Delete bot with permission check
+	if err := h.botService.DeleteBot(ctx, botID, userID, []string{}, false); err != nil {
 		if err == services.ErrBotNotFound {
 			return utils.ErrorResponse(errors.New("Bot not found"), http.StatusNotFound), nil
 		}
 		if err == services.ErrUnauthorized {
 			return utils.ErrorResponse(errors.New("Access denied"), http.StatusForbidden), nil
 		}
-		return utils.ErrorResponse(errors.New("Failed to get bot"), http.StatusInternalServerError), nil
-	}
-
-	// Only owner can delete
-	if existingBot.OwnerUserID != userID {
-		return utils.ErrorResponse(errors.New("Only the owner can delete this bot"), http.StatusForbidden), nil
-	}
-
-	if err := h.botService.DeleteBot(ctx, botID); err != nil {
 		return utils.ErrorResponse(errors.New("Failed to delete bot"), http.StatusInternalServerError), nil
 	}
 
@@ -244,38 +250,383 @@ func (h *BotHandler) deleteBot(ctx context.Context, botID, userID string) (event
 	return utils.NewAPIResponse(http.StatusOK, response), nil
 }
 
-// extractUserID extracts user ID from request (from Cognito JWT claims)
-func (h *BotHandler) extractUserID(request events.APIGatewayProxyRequest) string {
+// extractUserInfoFromJWT extracts user ID and groups from JWT claims
+func (h *BotHandler) extractUserInfoFromJWT(request events.APIGatewayProxyRequest) (string, []string) {
+	userID := ""
+	var userGroups []string
+	
 	// Debug: Log the entire authorizer context
 	fmt.Printf("DEBUG: Full RequestContext.Authorizer: %+v\n", request.RequestContext.Authorizer)
 	
 	// Extract user ID from the authorizer context (Cognito User Pool)
-	if userID, ok := request.RequestContext.Authorizer["sub"].(string); ok {
-		fmt.Printf("DEBUG: Found sub in authorizer context: %s\n", userID)
-		return userID
+	if id, ok := request.RequestContext.Authorizer["sub"].(string); ok {
+		userID = id
 	}
-	if userID, ok := request.RequestContext.Authorizer["userId"].(string); ok {
-		fmt.Printf("DEBUG: Found userId in authorizer context: %s\n", userID)
-		return userID
+	if id, ok := request.RequestContext.Authorizer["userId"].(string); ok && userID == "" {
+		userID = id
 	}
 	
 	// Check for claims in different format
 	if claims, ok := request.RequestContext.Authorizer["claims"].(map[string]interface{}); ok {
-		fmt.Printf("DEBUG: Found claims in authorizer context: %+v\n", claims)
-		if sub, exists := claims["sub"].(string); exists {
-			fmt.Printf("DEBUG: Found sub in claims: %s\n", sub)
-			return sub
+		if sub, exists := claims["sub"].(string); exists && userID == "" {
+			userID = sub
+		}
+		
+		// Extract groups from cognito:groups claim
+		if groups, exists := claims["cognito:groups"].(string); exists {
+			// Groups are comma-separated in the JWT claim
+			userGroups = strings.Split(groups, ",")
 		}
 	}
 	
 	// Legacy fallback for development
-	if userID := request.Headers["X-User-ID"]; userID != "" {
-		fmt.Printf("DEBUG: Using X-User-ID header: %s\n", userID)
-		return userID
+	if userID == "" {
+		if id := request.Headers["X-User-ID"]; id != "" {
+			userID = id
+		}
 	}
 	
-	fmt.Printf("DEBUG: No user ID found anywhere\n")
-	return ""
+	// Parse X-User-Groups header for development
+	if groupsHeader := request.Headers["X-User-Groups"]; groupsHeader != "" {
+		userGroups = strings.Split(groupsHeader, ",")
+	}
+	
+	fmt.Printf("DEBUG: Extracted userID: %s, groups: %v\n", userID, userGroups)
+	return userID, userGroups
+}
+
+// listPublicBots handles GET /bots/public
+func (h *BotHandler) listPublicBots(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	summaries, err := h.botService.GetBotSummaries(ctx, "", []string{}, false, "public", false, 100)
+	if err != nil {
+		return utils.ErrorResponse(errors.New("Failed to get public bots"), http.StatusInternalServerError), nil
+	}
+
+	response := models.BotsResponse{
+		Bots:      summaries,
+		Count:     len(summaries),
+		Total:     len(summaries),
+		RequestID: h.generateRequestID(),
+	}
+
+	return utils.NewAPIResponse(http.StatusOK, response), nil
+}
+
+// listPinnedBots handles GET /bots/pinned
+func (h *BotHandler) listPinnedBots(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	// Get pinned bots (public bots with pinned status)
+	bots, err := h.botService.ListBots(ctx, "", []string{}, false, "public", false, 100)
+	if err != nil {
+		return utils.ErrorResponse(errors.New("Failed to get pinned bots"), http.StatusInternalServerError), nil
+	}
+
+	// Filter for pinned bots
+	var pinnedBots []models.Bot
+	for _, bot := range bots {
+		if bot.IsPinned() {
+			pinnedBots = append(pinnedBots, bot)
+		}
+	}
+
+	// Convert to summaries
+	summaries := make([]models.BotSummary, len(pinnedBots))
+	for i, bot := range pinnedBots {
+		summaries[i] = bot.ToSummary()
+	}
+
+	response := models.BotsResponse{
+		Bots:      summaries,
+		Count:     len(summaries),
+		Total:     len(summaries),
+		RequestID: h.generateRequestID(),
+	}
+
+	return utils.NewAPIResponse(http.StatusOK, response), nil
+}
+
+// listSharedBots handles GET /bots/shared
+func (h *BotHandler) listSharedBots(ctx context.Context, request events.APIGatewayProxyRequest, userID string, userGroups []string) (events.APIGatewayProxyResponse, error) {
+	summaries, err := h.botService.GetBotSummaries(ctx, userID, userGroups, false, "shared", false, 100)
+	if err != nil {
+		return utils.ErrorResponse(errors.New("Failed to get shared bots"), http.StatusInternalServerError), nil
+	}
+
+	response := models.BotsResponse{
+		Bots:      summaries,
+		Count:     len(summaries),
+		Total:     len(summaries),
+		RequestID: h.generateRequestID(),
+	}
+
+	return utils.NewAPIResponse(http.StatusOK, response), nil
+}
+
+// searchBots handles GET /bots/search
+func (h *BotHandler) searchBots(ctx context.Context, request events.APIGatewayProxyRequest, userID string, userGroups []string) (events.APIGatewayProxyResponse, error) {
+	query := request.QueryStringParameters["query"]
+	scope := request.QueryStringParameters["scope"] // public, private, shared, all
+	
+	if query == "" {
+		return utils.ErrorResponse(errors.New("Query parameter is required"), http.StatusBadRequest), nil
+	}
+
+	// For now, do a simple search using ListBots and filter by title/description
+	bots, err := h.botService.ListBots(ctx, userID, userGroups, false, scope, false, 100)
+	if err != nil {
+		return utils.ErrorResponse(errors.New("Failed to search bots"), http.StatusInternalServerError), nil
+	}
+
+	// Simple text search filter
+	var filteredBots []models.Bot
+	for _, bot := range bots {
+		if strings.Contains(strings.ToLower(bot.Title), strings.ToLower(query)) ||
+			strings.Contains(strings.ToLower(bot.Description), strings.ToLower(query)) ||
+			strings.Contains(strings.ToLower(bot.Instruction), strings.ToLower(query)) {
+			filteredBots = append(filteredBots, bot)
+		}
+	}
+
+	// Convert to summaries
+	summaries := make([]models.BotSummary, len(filteredBots))
+	for i, bot := range filteredBots {
+		summaries[i] = bot.ToSummary()
+	}
+
+	response := models.BotsResponse{
+		Bots:      summaries,
+		Count:     len(summaries),
+		Total:     len(summaries),
+		RequestID: h.generateRequestID(),
+	}
+
+	return utils.NewAPIResponse(http.StatusOK, response), nil
+}
+
+// getBotVisibility handles GET /bots/{id}/visibility
+func (h *BotHandler) getBotVisibility(ctx context.Context, botID, userID string) (events.APIGatewayProxyResponse, error) {
+	bot, err := h.botService.GetBot(ctx, botID, userID, []string{}, false)
+	if err != nil {
+		if err == services.ErrBotNotFound {
+			return utils.ErrorResponse(errors.New("Bot not found"), http.StatusNotFound), nil
+		}
+		if err == services.ErrUnauthorized {
+			return utils.ErrorResponse(errors.New("Access denied"), http.StatusForbidden), nil
+		}
+		return utils.ErrorResponse(errors.New("Failed to get bot"), http.StatusInternalServerError), nil
+	}
+
+	// Check edit permissions for visibility settings
+	if !bot.IsEditableByUser(userID, []string{}, false) {
+		return utils.ErrorResponse(errors.New("Access denied: you can only view visibility settings for bots you own"), http.StatusForbidden), nil
+	}
+
+	visibilityResponse := map[string]interface{}{
+		"sharedScope":  bot.SharedScope,
+		"sharedStatus": bot.SharedStatus,
+		"allowedUsers": bot.AllowedUsers,
+		"allowedGroups": bot.AllowedGroups,
+		"requestId":    h.generateRequestID(),
+	}
+
+	return utils.NewAPIResponse(http.StatusOK, visibilityResponse), nil
+}
+
+// updateBotVisibility handles PATCH /bots/{id}/visibility
+func (h *BotHandler) updateBotVisibility(ctx context.Context, request events.APIGatewayProxyRequest, botID, userID string) (events.APIGatewayProxyResponse, error) {
+	var visibilityReq struct {
+		TargetSharedScope string   `json:"targetSharedScope" validate:"required,oneof=private partial public"`
+		AllowedUsers      []string `json:"allowedUsers,omitempty"`
+		AllowedGroups     []string `json:"allowedGroups,omitempty"`
+	}
+
+	if err := json.Unmarshal([]byte(request.Body), &visibilityReq); err != nil {
+		return utils.ErrorResponse(errors.New("Invalid JSON"), http.StatusBadRequest), nil
+	}
+
+	if err := h.validator.Struct(&visibilityReq); err != nil {
+		return utils.ErrorResponse(errors.New("Validation failed"), http.StatusBadRequest), nil
+	}
+
+	// Update bot sharing configuration
+	err := h.botService.UpdateBotSharing(ctx, botID, userID, visibilityReq.TargetSharedScope, "shared", visibilityReq.AllowedUsers, visibilityReq.AllowedGroups)
+	if err != nil {
+		if err == services.ErrBotNotFound {
+			return utils.ErrorResponse(errors.New("Bot not found"), http.StatusNotFound), nil
+		}
+		if err == services.ErrUnauthorized {
+			return utils.ErrorResponse(errors.New("Access denied"), http.StatusForbidden), nil
+		}
+		return utils.ErrorResponse(errors.New("Failed to update bot visibility"), http.StatusInternalServerError), nil
+	}
+
+	response := map[string]interface{}{
+		"message":   "Bot visibility updated successfully",
+		"requestId": h.generateRequestID(),
+	}
+
+	return utils.NewAPIResponse(http.StatusOK, response), nil
+}
+
+// getBotStackStatus handles GET /bots/{id}/stack-status
+func (h *BotHandler) getBotStackStatus(ctx context.Context, botID, userID string) (events.APIGatewayProxyResponse, error) {
+	status, err := h.botService.GetBotStackStatus(ctx, botID, userID, []string{}, false)
+	if err != nil {
+		if err == services.ErrBotNotFound {
+			return utils.ErrorResponse(errors.New("Bot not found"), http.StatusNotFound), nil
+		}
+		if err == services.ErrUnauthorized {
+			return utils.ErrorResponse(errors.New("Access denied"), http.StatusForbidden), nil
+		}
+		return utils.ErrorResponse(errors.New("Failed to get stack status"), http.StatusInternalServerError), nil
+	}
+
+	response := map[string]interface{}{
+		"stackStatus": status,
+		"requestId":   h.generateRequestID(),
+	}
+
+	return utils.NewAPIResponse(http.StatusOK, response), nil
+}
+
+// getBotSummary handles GET /bots/{id}/summary (bedrock-chat compatibility)
+func (h *BotHandler) getBotSummary(ctx context.Context, botID, userID string, userGroups []string) (events.APIGatewayProxyResponse, error) {
+	// Get bot with alias handling (core bedrock-chat pattern)
+	bot, alias, err := h.botService.GetBotWithAlias(ctx, botID, userID, userGroups, false)
+	if err != nil {
+		if err == services.ErrBotNotFound {
+			return utils.ErrorResponse(errors.New("Bot not found"), http.StatusNotFound), nil
+		}
+		if err == services.ErrUnauthorized {
+			return utils.ErrorResponse(errors.New("Access denied"), http.StatusForbidden), nil
+		}
+		return utils.ErrorResponse(errors.New("Failed to get bot summary"), http.StatusInternalServerError), nil
+	}
+
+	// Update usage analytics for the bot
+	_ = h.botService.IncrementBotUsage(ctx, bot.ID)
+
+	// If there's an alias, also update its usage
+	if alias != nil {
+		_ = h.botService.UpdateAliasUsage(ctx, alias.ID)
+	}
+
+	// Create summary response (use alias summary if available, else original bot)
+	var summary models.BotSummary
+	if alias != nil {
+		summary = alias.ToSummary()
+	} else {
+		summary = bot.ToSummary()
+	}
+
+	response := map[string]interface{}{
+		"summary":   summary,
+		"isAlias":   alias != nil,
+		"requestId": h.generateRequestID(),
+	}
+
+	return utils.NewAPIResponse(http.StatusOK, response), nil
+}
+
+// updateBotStarred handles PATCH /bots/{id}/starred
+func (h *BotHandler) updateBotStarred(ctx context.Context, request events.APIGatewayProxyRequest, botID, userID string, userGroups []string) (events.APIGatewayProxyResponse, error) {
+	var starReq struct {
+		Starred bool `json:"starred"`
+	}
+
+	if err := json.Unmarshal([]byte(request.Body), &starReq); err != nil {
+		return utils.ErrorResponse(errors.New("Invalid JSON"), http.StatusBadRequest), nil
+	}
+
+	// Check if this is an alias or original bot
+	bot, alias, err := h.botService.GetBotWithAlias(ctx, botID, userID, userGroups, false)
+	if err != nil {
+		if err == services.ErrBotNotFound {
+			return utils.ErrorResponse(errors.New("Bot not found"), http.StatusNotFound), nil
+		}
+		if err == services.ErrUnauthorized {
+			return utils.ErrorResponse(errors.New("Access denied"), http.StatusForbidden), nil
+		}
+		return utils.ErrorResponse(errors.New("Failed to get bot"), http.StatusInternalServerError), nil
+	}
+
+	// Update starred status
+	if alias != nil {
+		// Update alias starred status
+		err = h.botService.ToggleAliasStarred(ctx, alias.ID, starReq.Starred)
+	} else {
+		// Update original bot starred status  
+		err = h.botService.ToggleStar(ctx, bot.ID, userID, starReq.Starred)
+	}
+
+	if err != nil {
+		return utils.ErrorResponse(errors.New("Failed to update starred status"), http.StatusInternalServerError), nil
+	}
+
+	response := map[string]interface{}{
+		"message":   fmt.Sprintf("Bot %s successfully", map[bool]string{true: "starred", false: "unstarred"}[starReq.Starred]),
+		"starred":   starReq.Starred,
+		"requestId": h.generateRequestID(),
+	}
+
+	return utils.NewAPIResponse(http.StatusOK, response), nil
+}
+
+// getPopularBots handles GET /bots/popular (bedrock-chat compatibility)
+func (h *BotHandler) getPopularBots(ctx context.Context, request events.APIGatewayProxyRequest, userID string, userGroups []string) (events.APIGatewayProxyResponse, error) {
+	limitStr := request.QueryStringParameters["limit"]
+	limit := 20 // default
+	if limitStr != "" {
+		fmt.Sscanf(limitStr, "%d", &limit)
+	}
+
+	// Get popular bots using usage analytics
+	summaries, err := h.botService.GetPopularBots(ctx, userID, userGroups, limit)
+	if err != nil {
+		return utils.ErrorResponse(errors.New("Failed to get popular bots"), http.StatusInternalServerError), nil
+	}
+
+	response := models.BotsResponse{
+		Bots:      summaries,
+		Count:     len(summaries),
+		Total:     len(summaries),
+		RequestID: h.generateRequestID(),
+	}
+
+	return utils.NewAPIResponse(http.StatusOK, response), nil
+}
+
+// getDiscoveryBots handles GET /bots/discovery (random discovery feature)
+func (h *BotHandler) getDiscoveryBots(ctx context.Context, request events.APIGatewayProxyRequest, userID string, userGroups []string) (events.APIGatewayProxyResponse, error) {
+	limitStr := request.QueryStringParameters["limit"]
+	limit := 10 // default for discovery
+	if limitStr != "" {
+		fmt.Sscanf(limitStr, "%d", &limit)
+	}
+
+	// Get random public bots for discovery
+	summaries, err := h.botService.GetBotSummaries(ctx, userID, userGroups, false, "public", false, limit*3) // Get more than needed
+	if err != nil {
+		return utils.ErrorResponse(errors.New("Failed to get discovery bots"), http.StatusInternalServerError), nil
+	}
+
+	// Shuffle and limit for random discovery
+	if len(summaries) > limit {
+		// Simple shuffle logic (not cryptographically secure, but fine for discovery)
+		for i := len(summaries) - 1; i > 0; i-- {
+			j := i % (len(summaries))
+			summaries[i], summaries[j] = summaries[j], summaries[i]
+		}
+		summaries = summaries[:limit]
+	}
+
+	response := models.BotsResponse{
+		Bots:      summaries,
+		Count:     len(summaries),
+		Total:     len(summaries),
+		RequestID: h.generateRequestID(),
+	}
+
+	return utils.NewAPIResponse(http.StatusOK, response), nil
 }
 
 // generateRequestID generates a unique request ID

@@ -1,41 +1,24 @@
 import { useChat } from 'ai/react';
 import { useAuth } from '../components/AuthProvider';
-import { useConfig } from '../hooks/useConfig';
+import { useApiClient } from '../lib/api';
 import { Link } from 'react-router-dom';
 
 export function ChatPage() {
   const { user, signOut, getAccessToken } = useAuth();
-  const { config } = useConfig();
+  const apiClient = useApiClient(getAccessToken, () => user?.userId || user?.username || null);
 
   // Custom fetch function with authentication
   const authenticatedFetch = async (_input: RequestInfo | URL, options: RequestInit = {}) => {
-    const token = await getAccessToken();
+    if (!apiClient) {
+      throw new Error('API client not available');
+    }
     
-    return fetch('/api/chat', {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-        'Authorization': token ? `Bearer ${token}` : '',
-        'X-User-ID': user?.userId || user?.username || 'unknown',
-      },
-    });
+    return apiClient.post('chat', options.body ? JSON.parse(options.body as string) : undefined);
   };
 
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
     fetch: authenticatedFetch,
   });
-
-  if (!config) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading configuration...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">

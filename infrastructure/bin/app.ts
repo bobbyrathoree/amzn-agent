@@ -69,7 +69,7 @@ const frontendStack = new FrontendStack(app, `${config.prefix}FrontendStack`, {
   config,
   userPool: authStack.userPool,
   userPoolClient: authStack.userPoolClient,
-  identityPool: authStack.identityPool,
+  apiGateway: apiStack.apiGateway,
   apiEndpoint: apiStack.apiEndpoint,
   websocketEndpoint: apiStack.websocketEndpoint,
 });

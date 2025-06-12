@@ -1,39 +1,30 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
-import { useConfig } from '../hooks/useConfig';
+import { useApiClient } from '../lib/api';
 import type { Bot } from '../types';
 
 export function BotsPage() {
   const { user, signOut, getAccessToken } = useAuth();
-  const { config } = useConfig();
+  const apiClient = useApiClient(getAccessToken, () => user?.userId || user?.username || null);
   const [bots, setBots] = useState<Bot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadBots();
-  }, [config, user]);
+    if (apiClient) {
+      loadBots();
+    }
+  }, [user]); // Only reload when user changes, not apiClient
 
   const loadBots = async () => {
-    if (!config || !user) return;
+    if (!apiClient) return;
 
     try {
       setLoading(true);
       setError(null);
 
-      const token = await getAccessToken();
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-
-      const response = await fetch('/api/bots', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-User-ID': user.userId || user.username || 'unknown',
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await apiClient.get('bots');
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -50,17 +41,6 @@ export function BotsPage() {
       setLoading(false);
     }
   };
-
-  if (!config) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading configuration...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">

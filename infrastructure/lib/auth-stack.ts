@@ -87,6 +87,10 @@ export class AuthStack extends cdk.Stack {
         userPassword: true,
         userSrp: true,
       },
+      generateSecret: false, // Important: API Gateway Cognito authorizer doesn't work with client secrets
+      accessTokenValidity: cdk.Duration.hours(1),
+      idTokenValidity: cdk.Duration.hours(1),
+      refreshTokenValidity: cdk.Duration.days(30),
     });
     
     // Export outputs

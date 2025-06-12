@@ -40,8 +40,14 @@ func init() {
 	// Initialize repository
 	botRepo := repositories.NewBotRepository(dynamoClient, os.Getenv("BOTS_TABLE"))
 
+	// Initialize CDK deployment service
+	cdkService := services.NewCDKDeploymentService("cdk", "../../../infrastructure", "dev", os.Getenv("REGION"))
+	
+	// Initialize stack output service
+	stackOutputService := services.NewStackOutputService(awsConfig, os.Getenv("REGION"))
+
 	// Initialize service
-	botService := services.NewBotService(botRepo)
+	botService := services.NewBotService(botRepo, cdkService, stackOutputService, "dev", os.Getenv("REGION"))
 
 	// Initialize handler
 	botHandler = handlers.NewBotHandler(botService)

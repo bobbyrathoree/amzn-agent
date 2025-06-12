@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getCurrentUser, signIn, signOut, signUp, confirmSignUp, fetchAuthSession } from 'aws-amplify/auth';
 import type { AuthUser } from 'aws-amplify/auth';
 import { configureAmplify } from '../lib/amplify';
@@ -39,6 +40,7 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children, config }: AuthProviderProps) {
+  const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showLogin, setShowLogin] = useState(false);
@@ -86,10 +88,25 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
 
   const getAccessToken = async (): Promise<string | null> => {
     try {
+      console.log('🔑 Fetching auth session...');
       const session = await fetchAuthSession();
-      return session.tokens?.accessToken?.toString() || null;
+      console.log('🔑 Auth session:', {
+        credentials: !!session.credentials,
+        tokens: !!session.tokens,
+        accessToken: !!session.tokens?.accessToken,
+        idToken: !!session.tokens?.idToken
+      });
+      
+      if (!session.tokens?.idToken) {
+        console.warn('🔑 No ID token in session');
+        return null;
+      }
+      
+      const token = session.tokens.idToken.toString();
+      console.log('🔑 ID token retrieved:', token.substring(0, 20) + '...');
+      return token;
     } catch (error) {
-      console.error('Error getting access token:', error);
+      console.error('🔑 Error getting access token:', error);
       return null;
     }
   };
@@ -99,6 +116,7 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
     setError(null);
     
     try {
+      console.log('🔐 Attempting sign in for:', email);
       const { isSignedIn } = await signIn({ 
         username: email, 
         password,
@@ -107,7 +125,13 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
         }
       });
       
+      console.log('🔐 Sign in result:', { isSignedIn });
+      
       if (isSignedIn) {
+        // Test token availability immediately after sign in
+        const testToken = await getAccessToken();
+        console.log('🔐 Token available after sign in:', !!testToken);
+        
         await checkAuthState();
         return true;
       } else {
@@ -115,7 +139,7 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
         return false;
       }
     } catch (error: any) {
-      console.error('Sign in error:', error);
+      console.error('🔐 Sign in error:', error);
       setError(error.message || 'Sign in failed. Please try again.');
       return false;
     } finally {
@@ -170,6 +194,7 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
       await signOut();
       setUser(null);
       setShowLogin(true);
+      navigate('/'); // Redirect to homepage on logout
     } catch (error) {
       console.error('Sign out error:', error);
     }

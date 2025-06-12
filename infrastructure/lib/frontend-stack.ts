@@ -7,6 +7,7 @@ import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as cr from 'aws-cdk-lib/custom-resources';
+import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import { Construct } from 'constructs';
 import * as path from 'path';
 import { Config } from './config';
@@ -16,7 +17,7 @@ export interface FrontendStackProps extends cdk.StackProps {
   config: Config;
   userPool: cognito.UserPool;
   userPoolClient: cognito.UserPoolClient;
-  identityPool: cognito.CfnIdentityPool;
+  apiGateway: apigateway.RestApi;
   apiEndpoint: string;
   websocketEndpoint: string;
 }
@@ -65,6 +66,19 @@ export class FrontendStack extends cdk.Stack {
         }),
       },
       additionalBehaviors: {
+        // API calls - proxy to API Gateway (same-origin, no CORS needed) 
+        '/prod/*': {
+          origin: new origins.HttpOrigin(`${props.apiGateway.restApiId}.execute-api.${this.region}.amazonaws.com`, {
+            protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
+            customHeaders: {
+              'X-Debug-Origin': 'API-Gateway-Origin',
+            },
+          }),
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+        },
         // Static assets (JS, CSS, images) - cache aggressively
         '/assets/*': {
           origin: origins.S3BucketOrigin.withOriginAccessControl(this.websiteBucket, {
@@ -122,24 +136,121 @@ export class FrontendStack extends cdk.Stack {
     console.log('🔍 Checking for React build...');
     console.log('React build path:', reactBuildPath);
     
+    
+    // Create a custom resource Lambda to handle config.json with proper token resolution
+    const configLambda = new lambda.Function(this, 'ConfigLambda', {
+      runtime: lambda.Runtime.PYTHON_3_11,
+      handler: 'index.handler',
+      code: lambda.Code.fromInline(`
+import json
+import boto3
+import cfnresponse
+import traceback
+
+def handler(event, context):
+    try:
+        print(f"Event: {json.dumps(event)}")
+        s3 = boto3.client('s3')
+        
+        if event['RequestType'] == 'Delete':
+            print("Delete request - skipping config.json deletion")
+            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+            return
+            
+        # Get properties from event
+        bucket_name = event['ResourceProperties']['BucketName']
+        config_data = event['ResourceProperties']['ConfigData']
+        distribution_id = event['ResourceProperties']['DistributionId']
+        
+        print(f"Uploading config.json to bucket: {bucket_name}")
+        print(f"Config data: {json.dumps(config_data, indent=2)}")
+        
+        # Upload config.json to S3
+        response = s3.put_object(
+            Bucket=bucket_name,
+            Key='config.json',
+            Body=json.dumps(config_data, indent=2),
+            ContentType='application/json',
+            CacheControl='no-cache'
+        )
+        
+        print(f"S3 upload response: {response}")
+        
+        # Invalidate CloudFront cache for config.json
+        if distribution_id:
+            print(f"Invalidating CloudFront cache for distribution: {distribution_id}")
+            cloudfront = boto3.client('cloudfront')
+            invalidation_response = cloudfront.create_invalidation(
+                DistributionId=distribution_id,
+                InvalidationBatch={
+                    'Paths': {
+                        'Quantity': 1,
+                        'Items': ['/config.json']
+                    },
+                    'CallerReference': str(context.aws_request_id)
+                }
+            )
+            print(f"CloudFront invalidation response: {invalidation_response}")
+        
+        print("Config deployment completed successfully")
+        cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        cfnresponse.send(event, context, cfnresponse.FAILED, {})
+      `),
+      timeout: cdk.Duration.minutes(5),
+    });
+    
+    // Grant permissions to the Lambda
+    this.websiteBucket.grantWrite(configLambda);
+    configLambda.addToRolePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['cloudfront:CreateInvalidation'],
+      resources: ['*'],
+    }));
+    
+    // Create custom resource to deploy config.json
+    const configDeployment = new cdk.CustomResource(this, 'ConfigDeployment', {
+      serviceToken: configLambda.functionArn,
+      properties: {
+        BucketName: this.websiteBucket.bucketName,
+        DistributionId: this.distribution.distributionId,
+        ConfigData: {
+          environment: props.config.env,
+          userPoolId: props.userPool.userPoolId,
+          userPoolClientId: props.userPoolClient.userPoolClientId,
+          apiEndpoint: props.apiEndpoint,
+          websocketEndpoint: props.websocketEndpoint,
+          region: this.region,
+        },
+      },
+    });
+    
+    // Deploy website content after config is created
     if (fs.existsSync(reactBuildPath) && fs.existsSync(path.join(reactBuildPath, 'index.html'))) {
       console.log('✅ Found React build, deploying...');
       
-      // Deploy React build without config.json first
-      new s3deploy.BucketDeployment(this, 'ReactDeployment', {
+      // Deploy React build (preserve config.json created by custom resource)
+      const reactDeployment = new s3deploy.BucketDeployment(this, 'ReactDeployment', {
         sources: [s3deploy.Source.asset(reactBuildPath)],
         destinationBucket: this.websiteBucket,
         distribution: this.distribution,
         distributionPaths: ['/*'],
-        prune: true,
+        prune: false, // Don't delete config.json created by custom resource
         retainOnDelete: false,
+        exclude: ['config.json'], // Explicitly exclude config.json from deployment
       });
+      
+      // Ensure config is deployed before React app
+      reactDeployment.node.addDependency(configDeployment);
       
     } else {
       console.log('❌ No React build found. Run "npm run build" in react-frontend directory first.');
       
       // Deploy minimal placeholder
-      new s3deploy.BucketDeployment(this, 'PlaceholderDeployment', {
+      const placeholderDeployment = new s3deploy.BucketDeployment(this, 'PlaceholderDeployment', {
         sources: [
           s3deploy.Source.jsonData('index.html', `
             <!DOCTYPE html>
@@ -156,86 +267,10 @@ export class FrontendStack extends cdk.Stack {
         distribution: this.distribution,
         distributionPaths: ['/*'],
       });
+      
+      // Ensure config is deployed before placeholder
+      placeholderDeployment.node.addDependency(configDeployment);
     }
-    
-    // Create a custom resource Lambda to handle config.json with proper token resolution
-    const configLambda = new lambda.Function(this, 'ConfigLambda', {
-      runtime: lambda.Runtime.PYTHON_3_11,
-      handler: 'index.handler',
-      code: lambda.Code.fromInline(`
-import json
-import boto3
-import cfnresponse
-
-def handler(event, context):
-    try:
-        s3 = boto3.client('s3')
-        
-        if event['RequestType'] == 'Delete':
-            cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
-            return
-            
-        # Get properties from event
-        bucket_name = event['ResourceProperties']['BucketName']
-        config_data = event['ResourceProperties']['ConfigData']
-        distribution_id = event['ResourceProperties']['DistributionId']
-        
-        # Upload config.json to S3
-        s3.put_object(
-            Bucket=bucket_name,
-            Key='config.json',
-            Body=json.dumps(config_data, indent=2),
-            ContentType='application/json'
-        )
-        
-        # Invalidate CloudFront cache for config.json
-        if distribution_id:
-            cloudfront = boto3.client('cloudfront')
-            cloudfront.create_invalidation(
-                DistributionId=distribution_id,
-                InvalidationBatch={
-                    'Paths': {
-                        'Quantity': 1,
-                        'Items': ['/config.json']
-                    },
-                    'CallerReference': str(context.aws_request_id)
-                }
-            )
-        
-        cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
-        
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        cfnresponse.send(event, context, cfnresponse.FAILED, {})
-      `),
-      timeout: cdk.Duration.minutes(5),
-    });
-    
-    // Grant permissions to the Lambda
-    this.websiteBucket.grantWrite(configLambda);
-    configLambda.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['cloudfront:CreateInvalidation'],
-      resources: ['*'],
-    }));
-    
-    // Create custom resource to deploy config.json
-    new cdk.CustomResource(this, 'ConfigDeployment', {
-      serviceToken: configLambda.functionArn,
-      properties: {
-        BucketName: this.websiteBucket.bucketName,
-        DistributionId: this.distribution.distributionId,
-        ConfigData: {
-          environment: props.config.env,
-          userPoolId: props.userPool.userPoolId,
-          userPoolClientId: props.userPoolClient.userPoolClientId,
-          identityPoolId: props.identityPool.ref,
-          apiEndpoint: props.apiEndpoint,
-          websocketEndpoint: props.websocketEndpoint,
-          region: this.region,
-        },
-      },
-    });
     
     this.websiteUrl = `https://${this.distribution.distributionDomainName}`;
     
@@ -257,5 +292,22 @@ def handler(event, context):
       description: 'CloudFront Distribution ID',
       exportName: `${props.config.prefix}CloudFrontDistributionId`,
     });
+    
+    // Debug outputs
+    new cdk.CfnOutput(this, 'ApiGatewayId', {
+      value: props.apiGateway.restApiId,
+      description: 'API Gateway REST API ID',
+    });
+    
+    new cdk.CfnOutput(this, 'ApiGatewayStageName', {
+      value: props.apiGateway.deploymentStage.stageName,
+      description: 'API Gateway Stage Name',
+    });
+    
+    new cdk.CfnOutput(this, 'ExpectedApiOrigin', {
+      value: `${props.apiGateway.restApiId}.execute-api.${this.region}.amazonaws.com`,
+      description: 'Expected API Gateway Origin Domain',
+    });
   }
+
 }

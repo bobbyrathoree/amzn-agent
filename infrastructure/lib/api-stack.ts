@@ -48,14 +48,14 @@ export class ApiStack extends cdk.Stack {
           'Authorization',
           'X-Amz-Date',
           'X-Api-Key',
-          'x-user-id',
+          'X-User-ID',
         ],
         allowCredentials: true,
       },
       deployOptions: {
         stageName: props.config.env,
         loggingLevel: apigateway.MethodLoggingLevel.INFO,
-        dataTraceEnabled: true,
+        dataTraceEnabled: false,
         metricsEnabled: true,
       },
     });
@@ -64,6 +64,8 @@ export class ApiStack extends cdk.Stack {
     const authorizer = new apigateway.CognitoUserPoolsAuthorizer(this, 'ApiAuthorizer', {
       cognitoUserPools: [props.userPool],
       identitySource: 'method.request.header.Authorization',
+      authorizerName: `${props.config.prefix}CognitoAuthorizer`,
+      resultsCacheTtl: cdk.Duration.minutes(5), // Cache results for 5 minutes
     });
     
     // Create Lambda role with necessary permissions
@@ -185,7 +187,8 @@ export class ApiStack extends cdk.Stack {
     
     // Create the Lambda function
     const fn = new lambda.Function(this, id, {
-      runtime: lambda.Runtime.PROVIDED_AL2,
+      runtime: lambda.Runtime.PROVIDED_AL2023,
+      architecture: lambda.Architecture.ARM_64,
       handler: 'bootstrap',
       code: lambda.Code.fromAsset(lambdaPath),
       memorySize: props.config.lambdaMemory,

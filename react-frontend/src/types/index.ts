@@ -10,7 +10,6 @@ export interface Config {
   environment: string;
   userPoolId: string;
   userPoolClientId: string;
-  identityPoolId: string;
   apiEndpoint: string;
   websocketEndpoint: string;
   region: string;
