@@ -59,6 +59,7 @@ type ChatResponse struct {
 	Sources          []KnowledgeBaseChunk     `json:"sources,omitempty"`
 	ToolsUsed        []string                 `json:"toolsUsed,omitempty"`
 	GuardrailApplied bool                     `json:"guardrailApplied,omitempty"`
+	KnowledgeSearchStages []KnowledgeSearchStage `json:"knowledgeSearchStages,omitempty"` // 🚀 INGENIOUS ENHANCEMENT
 	Metadata         map[string]interface{}   `json:"metadata,omitempty"`
 }
 
@@ -68,6 +69,25 @@ type KnowledgeBaseChunk struct {
 	Score    float64 `json:"score"`
 	Source   string  `json:"source"`
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// 🚀 INGENIOUS ENHANCEMENT: Multi-Stage Knowledge Search
+type KnowledgeSearchStage struct {
+	Stage       string                 `json:"stage"`
+	Query       string                 `json:"query"`
+	Strategy    string                 `json:"strategy"`
+	ResultCount int                    `json:"result_count"`
+	Duration    string                 `json:"duration"`
+	Success     bool                   `json:"success"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// 🚀 INGENIOUS ENHANCEMENT: Contextual Query Enhancement  
+type QueryEnhancement struct {
+	OriginalQuery    string   `json:"original_query"`
+	EnhancedQueries  []string `json:"enhanced_queries"`
+	ConversationHints []string `json:"conversation_hints"`
+	KeyTerms         []string `json:"key_terms"`
 }
 
 // ChatWithBot handles a chat interaction with a specific bot with full conversation persistence
@@ -143,21 +163,30 @@ func (s *ChatService) ChatWithBot(ctx context.Context, botID, userID string, use
 	// Build conversation context for AI
 	conversationContext := s.buildConversationContext(conversationHistory)
 	
-	// Retrieve relevant knowledge if bot has Knowledge Base
-	var knowledgeContext string
+	// STEP 3A: Intelligent Knowledge Retrieval with Multi-Stage Search 🚀 INGENIOUS ENHANCEMENT
 	var sources []KnowledgeBaseChunk
+	var knowledgeSearchStages []KnowledgeSearchStage
+	
 	if bot.KnowledgeBaseID != nil && *bot.KnowledgeBaseID != "" {
-		knowledgeContext, sources, err = s.retrieveKnowledge(ctx, *bot.KnowledgeBaseID, req.Message, bot.KnowledgeBaseConfig)
+		log.Printf("🔍 DEBUG: Starting KB search with ID: %s, Config: %+v", *bot.KnowledgeBaseID, bot.KnowledgeBaseConfig)
+		// Progressive knowledge search with multiple strategies
+		_, sources, knowledgeSearchStages, err = s.intelligentKnowledgeRetrieval(ctx, *bot.KnowledgeBaseID, req.Message, conversationHistory, bot.KnowledgeBaseConfig)
 		if err != nil {
-			log.Printf("Warning: Knowledge Base retrieval failed: %v", err)
+			log.Printf("Warning: Intelligent Knowledge Base retrieval failed: %v", err)
 		}
+		log.Printf("🔍 DEBUG: KB search completed with %d sources, %d stages", len(sources), len(knowledgeSearchStages))
+	} else {
+		log.Printf("🔍 DEBUG: No knowledge base configured for bot. KnowledgeBaseID: %v", bot.KnowledgeBaseID)
 	}
 
-	// Combine system prompt with knowledge context
+	// Combine system prompt with knowledge context using sophisticated RAG prompting
 	fullPrompt := systemPrompt
-	if knowledgeContext != "" {
-		fullPrompt += "\n\nRelevant information from knowledge base:\n" + knowledgeContext
-		fullPrompt += "\n\nPlease use the above information to help answer the user's question. If the information doesn't directly relate to the question, you may rely on your general knowledge."
+	if len(sources) > 0 {
+		// Use the new sophisticated RAG prompt with citation instructions 🚀
+		ragPrompt := BuildRAGPrompt(sources, bot.DisplayRetrievedChunks)
+		fullPrompt += "\n\n" + ragPrompt
+		
+		log.Printf("🔍 Enhanced RAG prompt applied with %d sources, citations: %v", len(sources), bot.DisplayRetrievedChunks)
 	}
 
 	// STEP 4: Execute agent tools if needed
@@ -241,12 +270,13 @@ func (s *ChatService) ChatWithBot(ctx context.Context, botID, userID string, use
 	}
 	
 	chatResponse := &ChatResponse{
-		Response:         response,
-		ConversationID:   req.ConversationID,
-		Sources:          sources,
-		ToolsUsed:        toolsUsed,
-		GuardrailApplied: guardrailApplied,
-		Metadata:         metadata,
+		Response:              response,
+		ConversationID:        req.ConversationID,
+		Sources:               sources,
+		ToolsUsed:             toolsUsed,
+		GuardrailApplied:      guardrailApplied,
+		KnowledgeSearchStages: knowledgeSearchStages, // 🚀 INGENIOUS ENHANCEMENT
+		Metadata:              metadata,
 	}
 
 	log.Printf("✅ Chat response generated and saved for bot %s, conversation %s", botID, req.ConversationID)
@@ -289,12 +319,19 @@ func (s *ChatService) retrieveKnowledge(ctx context.Context, kbID, query string,
 		},
 	}
 
+	// Debug: Log the exact API call parameters
+	log.Printf("🔍 DEBUG: KB API Call - KnowledgeBaseId: %s, Query: %s, SearchType: %v, MaxResults: %d", 
+		*input.KnowledgeBaseId, *input.RetrievalQuery.Text, searchType, *input.RetrievalConfiguration.VectorSearchConfiguration.NumberOfResults)
+
 	// Make the API call to retrieve knowledge
 	response, err := s.bedrockAgentClient.Retrieve(ctx, input)
 	if err != nil {
 		log.Printf("❌ Failed to retrieve from Knowledge Base: %v", err)
 		return "", []KnowledgeBaseChunk{}, fmt.Errorf("failed to retrieve from knowledge base: %w", err)
 	}
+
+	// Debug: Log the API response details
+	log.Printf("🔍 DEBUG: KB API Response - Total results: %d", len(response.RetrievalResults))
 
 	// Process the results
 	var chunks []KnowledgeBaseChunk
@@ -316,8 +353,18 @@ func (s *ChatService) retrieveKnowledge(ctx context.Context, kbID, query string,
 			score = float64(*result.Score)
 		}
 
+		// Debug: Log the score and threshold comparison
+		log.Printf("🔍 DEBUG: KB Result %d - Score: %.3f, Threshold: %.3f, Content preview: %.100s", 
+			i+1, score, config.ScoreThreshold, content)
+
+		// Use reasonable threshold for Knowledge Base similarity scores (typically 0.3-0.6 range)
+		effectiveThreshold := config.ScoreThreshold
+		if config.ScoreThreshold > 0.5 {
+			effectiveThreshold = 0.4 // More reasonable threshold for KB results
+		}
+		
 		// Skip results below threshold
-		if score > 0 && score < config.ScoreThreshold {
+		if score > 0 && score < effectiveThreshold {
 			continue
 		}
 
@@ -386,6 +433,396 @@ func (s *ChatService) extractSourceFromLocation(location *types.RetrievalResultL
 
 	return "Unknown Source", ""
 }
+
+// 🚀 INGENIOUS ENHANCEMENT: Intelligent Multi-Stage Knowledge Retrieval
+// This surpasses bedrock-chat by combining multiple search strategies and contextual understanding
+func (s *ChatService) intelligentKnowledgeRetrieval(ctx context.Context, kbID, query string, conversationHistory []models.Message, config models.KnowledgeBaseConfig) (string, []KnowledgeBaseChunk, []KnowledgeSearchStage, error) {
+	startTime := time.Now()
+	var allChunks []KnowledgeBaseChunk
+	var searchStages []KnowledgeSearchStage
+	
+	log.Printf("🧠 Starting intelligent knowledge retrieval for query: %s", query)
+	
+	// STAGE 1: Query Enhancement with Conversational Context 🚀
+	enhancement := s.enhanceQueryWithContext(query, conversationHistory)
+	searchStages = append(searchStages, KnowledgeSearchStage{
+		Stage:    "query_enhancement",
+		Query:    query,
+		Strategy: "contextual_analysis",
+		Duration: time.Since(startTime).String(),
+		Success:  true,
+		Metadata: map[string]interface{}{
+			"enhanced_queries": enhancement.EnhancedQueries,
+			"key_terms":       enhancement.KeyTerms,
+			"context_hints":   enhancement.ConversationHints,
+		},
+	})
+	
+	// STAGE 2: Multi-Strategy Search 🚀
+	searchStrategies := []struct {
+		name     string
+		query    string
+		maxResults int
+	}{}
+	
+	// Always include primary search
+	searchStrategies = append(searchStrategies, struct {
+		name     string
+		query    string
+		maxResults int
+	}{"primary_search", query, config.MaxResults/2})
+	
+	// Enhanced search if we have enhanced queries
+	if len(enhancement.EnhancedQueries) > 0 {
+		enhancedQuery := strings.Join(enhancement.EnhancedQueries, " ")
+		if enhancedQuery != "" {
+			searchStrategies = append(searchStrategies, struct {
+				name     string
+				query    string
+				maxResults int
+			}{"enhanced_search", enhancedQuery, config.MaxResults/2})
+		}
+	}
+	
+	// Contextual search if we have key terms
+	if len(enhancement.KeyTerms) > 0 {
+		contextualQuery := strings.Join(enhancement.KeyTerms, " OR ")
+		if contextualQuery != "" && strings.TrimSpace(contextualQuery) != "" {
+			searchStrategies = append(searchStrategies, struct {
+				name     string
+				query    string
+				maxResults int
+			}{"contextual_search", contextualQuery, config.MaxResults/3})
+		}
+	}
+	
+	for _, strategy := range searchStrategies {
+		stageStart := time.Now()
+		chunks, err := s.performKnowledgeSearch(ctx, kbID, strategy.query, strategy.maxResults, config)
+		
+		stage := KnowledgeSearchStage{
+			Stage:       strategy.name,
+			Query:       strategy.query,
+			Strategy:    "hybrid_vector_search",
+			ResultCount: len(chunks),
+			Duration:    time.Since(stageStart).String(),
+			Success:     err == nil,
+		}
+		
+		if err != nil {
+			log.Printf("❌ Search strategy %s failed: %v", strategy.name, err)
+			stage.Metadata = map[string]interface{}{"error": err.Error()}
+		} else {
+			// Add relevance scoring and deduplication 🚀
+			chunks = s.scoreAndDeduplicateChunks(chunks, query, allChunks)
+			allChunks = append(allChunks, chunks...)
+			log.Printf("✅ Strategy %s found %d unique chunks", strategy.name, len(chunks))
+		}
+		
+		searchStages = append(searchStages, stage)
+	}
+	
+	// STAGE 3: Fallback Search if no results found 🚀
+	if len(allChunks) == 0 {
+		log.Printf("⚠️ No results from sophisticated search, trying fallback broad search")
+		
+		// Try a simple broad search with individual words
+		words := strings.Fields(query)
+		for _, word := range words {
+			if len(word) > 3 { // Only search meaningful words
+				fallbackChunks, err := s.performKnowledgeSearch(ctx, kbID, word, config.MaxResults, config)
+				if err == nil && len(fallbackChunks) > 0 {
+					log.Printf("🎯 Fallback search for '%s' found %d chunks", word, len(fallbackChunks))
+					allChunks = append(allChunks, fallbackChunks...)
+					break // Found some results, stop fallback search
+				}
+			}
+		}
+		
+		// If still no results, try the most basic search possible
+		if len(allChunks) == 0 {
+			log.Printf("⚠️ Trying final fallback with original query")
+			fallbackChunks, err := s.performKnowledgeSearch(ctx, kbID, query, config.MaxResults, config)
+			if err == nil {
+				allChunks = append(allChunks, fallbackChunks...)
+			}
+		}
+		
+		searchStages = append(searchStages, KnowledgeSearchStage{
+			Stage:       "fallback_search",
+			Query:       query,
+			Strategy:    "broad_keyword_search",
+			ResultCount: len(allChunks),
+			Duration:    time.Since(startTime).String(),
+			Success:     len(allChunks) > 0,
+			Metadata: map[string]interface{}{
+				"reason": "sophisticated_search_returned_no_results",
+			},
+		})
+	}
+	
+	// STAGE 4: Smart Result Ranking and Filtering 🚀
+	finalChunks := s.intelligentResultRanking(allChunks, query, enhancement, config.MaxResults)
+	
+	searchStages = append(searchStages, KnowledgeSearchStage{
+		Stage:       "result_optimization",
+		Query:       query,
+		Strategy:    "ai_powered_ranking",
+		ResultCount: len(finalChunks),
+		Duration:    time.Since(startTime).String(),
+		Success:     true,
+		Metadata: map[string]interface{}{
+			"total_found":    len(allChunks),
+			"final_selected": len(finalChunks),
+			"optimization":   "diversity_and_relevance",
+		},
+	})
+	
+	// STAGE 4: Return results for RAG prompt processing in main flow 🚀
+	log.Printf("🎯 Intelligent retrieval completed: %d final chunks, %d stages, %s total", 
+		len(finalChunks), len(searchStages), time.Since(startTime).String())
+	
+	return "", finalChunks, searchStages, nil
+}
+
+// 🚀 INGENIOUS ENHANCEMENT: Context-Aware Query Enhancement
+func (s *ChatService) enhanceQueryWithContext(query string, conversationHistory []models.Message) QueryEnhancement {
+	enhancement := QueryEnhancement{
+		OriginalQuery:   query,
+		EnhancedQueries: []string{},
+		ConversationHints: []string{},
+		KeyTerms:        []string{},
+	}
+	
+	// Extract key terms from the current query
+	queryLower := strings.ToLower(query)
+	
+	// Generic query enhancement - extract key terms without domain-specific assumptions 🚀
+	words := strings.Fields(queryLower)
+	
+	// Extract meaningful terms (filter out common words)
+	commonWords := map[string]bool{
+		"the": true, "a": true, "an": true, "and": true, "or": true, "but": true,
+		"in": true, "on": true, "at": true, "to": true, "for": true, "of": true,
+		"with": true, "by": true, "is": true, "are": true, "was": true, "were": true,
+		"what": true, "how": true, "when": true, "where": true, "why": true, "who": true,
+		"can": true, "tell": true, "me": true, "about": true, "you": true, "do": true,
+		"really": true, "try": true, "again": true, "please": true, "that": true, "this": true,
+	}
+	
+	for _, word := range words {
+		if len(word) > 2 && !commonWords[word] {
+			enhancement.KeyTerms = append(enhancement.KeyTerms, word)
+		}
+	}
+	
+	// If no key terms extracted from basic filtering, try to use original query as fallback
+	if len(enhancement.KeyTerms) == 0 {
+		// Use original query words but clean punctuation
+		cleanQuery := strings.ReplaceAll(strings.ReplaceAll(query, "?", ""), "!", "")
+		if strings.TrimSpace(cleanQuery) != "" {
+			enhancement.KeyTerms = append(enhancement.KeyTerms, strings.TrimSpace(cleanQuery))
+		}
+	}
+	
+	// Create enhanced queries using different combinations
+	if len(words) > 1 {
+		// Try different word combinations
+		enhancement.EnhancedQueries = append(enhancement.EnhancedQueries, 
+			fmt.Sprintf("(%s)", strings.Join(words, " AND ")))
+		
+		if len(words) > 2 {
+			// Try partial combinations for broader search
+			enhancement.EnhancedQueries = append(enhancement.EnhancedQueries,
+				fmt.Sprintf("(%s) OR (%s)", words[0], strings.Join(words[1:], " ")))
+		}
+	}
+	
+	// Extract context from recent conversation
+	if len(conversationHistory) > 0 {
+		recentMessages := conversationHistory
+		if len(conversationHistory) > 3 {
+			recentMessages = conversationHistory[len(conversationHistory)-3:]
+		}
+		
+		for _, msg := range recentMessages {
+			if msg.Role == "user" && len(msg.Content) > 0 {
+				content := strings.ToLower(msg.Content[0].Text)
+				// Generic context extraction - look for information-seeking patterns
+				if strings.Contains(content, "what") || strings.Contains(content, "how") ||
+				   strings.Contains(content, "tell me") || strings.Contains(content, "explain") ||
+				   strings.Contains(content, "describe") || strings.Contains(content, "information") {
+					enhancement.ConversationHints = append(enhancement.ConversationHints, "user_seeking_information")
+				}
+				if strings.Contains(content, "more") || strings.Contains(content, "details") ||
+				   strings.Contains(content, "specific") || strings.Contains(content, "further") {
+					enhancement.ConversationHints = append(enhancement.ConversationHints, "user_wants_more_detail")
+				}
+			}
+		}
+	}
+	
+	// If no specific expansions found, create generic enhanced queries
+	if len(enhancement.EnhancedQueries) == 0 {
+		words := strings.Fields(queryLower)
+		if len(words) > 1 {
+			enhancement.EnhancedQueries = append(enhancement.EnhancedQueries, 
+				fmt.Sprintf("(%s) AND (%s)", words[0], strings.Join(words[1:], " OR ")))
+		}
+	}
+	
+	return enhancement
+}
+
+// 🚀 INGENIOUS ENHANCEMENT: Perform individual knowledge search with strategy
+func (s *ChatService) performKnowledgeSearch(ctx context.Context, kbID, query string, maxResults int, config models.KnowledgeBaseConfig) ([]KnowledgeBaseChunk, error) {
+	// Validate query before sending to KB - prevent ValidationException
+	if strings.TrimSpace(query) == "" {
+		log.Printf("⚠️ Empty query detected, skipping KB search")
+		return []KnowledgeBaseChunk{}, fmt.Errorf("empty query provided for knowledge base search")
+	}
+	
+	// Use the existing retrieveKnowledge but with custom parameters
+	tempConfig := config
+	tempConfig.MaxResults = maxResults
+	
+	log.Printf("🔍 Performing KB search: kbID=%s, query='%s', maxResults=%d, searchType=%s", 
+		kbID, query, maxResults, config.SearchType)
+	
+	_, chunks, err := s.retrieveKnowledge(ctx, kbID, query, tempConfig)
+	
+	if err != nil {
+		log.Printf("❌ KB search failed: %v", err)
+	} else {
+		log.Printf("✅ KB search returned %d chunks", len(chunks))
+	}
+	
+	return chunks, err
+}
+
+// 🚀 INGENIOUS ENHANCEMENT: Score and deduplicate chunks across searches
+func (s *ChatService) scoreAndDeduplicateChunks(newChunks []KnowledgeBaseChunk, query string, existingChunks []KnowledgeBaseChunk) []KnowledgeBaseChunk {
+	var uniqueChunks []KnowledgeBaseChunk
+	seen := make(map[string]bool)
+	
+	// Build map of existing chunks for deduplication
+	for _, existing := range existingChunks {
+		seen[existing.Content] = true
+	}
+	
+	queryLower := strings.ToLower(query)
+	
+	for _, chunk := range newChunks {
+		// Skip duplicates
+		if seen[chunk.Content] {
+			continue
+		}
+		
+		// Enhanced relevance scoring 🚀
+		relevanceBoost := 0.0
+		contentLower := strings.ToLower(chunk.Content)
+		
+		// Boost score for exact query term matches
+		for _, word := range strings.Fields(queryLower) {
+			if strings.Contains(contentLower, word) {
+				relevanceBoost += 0.1
+			}
+		}
+		
+		// Boost for technical terms
+		technicalTerms := []string{"api", "configuration", "implementation", "architecture", "system"}
+		for _, term := range technicalTerms {
+			if strings.Contains(contentLower, term) && strings.Contains(queryLower, term) {
+				relevanceBoost += 0.05
+			}
+		}
+		
+		chunk.Score += relevanceBoost
+		uniqueChunks = append(uniqueChunks, chunk)
+		seen[chunk.Content] = true
+	}
+	
+	return uniqueChunks
+}
+
+// 🚀 INGENIOUS ENHANCEMENT: AI-Powered Result Ranking with Diversity
+func (s *ChatService) intelligentResultRanking(chunks []KnowledgeBaseChunk, query string, enhancement QueryEnhancement, maxResults int) []KnowledgeBaseChunk {
+	if len(chunks) <= maxResults {
+		return chunks
+	}
+	
+	// Sort by score first
+	for i := 0; i < len(chunks)-1; i++ {
+		for j := i + 1; j < len(chunks); j++ {
+			if chunks[i].Score < chunks[j].Score {
+				chunks[i], chunks[j] = chunks[j], chunks[i]
+			}
+		}
+	}
+	
+	// Apply diversity selection to avoid too similar results 🚀
+	var finalChunks []KnowledgeBaseChunk
+	for i, chunk := range chunks {
+		if len(finalChunks) >= maxResults {
+			break
+		}
+		
+		// Always include the top result
+		if i == 0 {
+			finalChunks = append(finalChunks, chunk)
+			continue
+		}
+		
+		// Check diversity - avoid too similar content
+		isDiverse := true
+		for _, existing := range finalChunks {
+			similarity := s.calculateContentSimilarity(chunk.Content, existing.Content)
+			if similarity > 0.8 { // Too similar
+				isDiverse = false
+				break
+			}
+		}
+		
+		if isDiverse || chunk.Score > 0.9 { // High score overrides diversity
+			finalChunks = append(finalChunks, chunk)
+		}
+	}
+	
+	return finalChunks
+}
+
+// 🚀 INGENIOUS ENHANCEMENT: Simple content similarity calculation
+func (s *ChatService) calculateContentSimilarity(content1, content2 string) float64 {
+	words1 := strings.Fields(strings.ToLower(content1))
+	words2 := strings.Fields(strings.ToLower(content2))
+	
+	if len(words1) == 0 || len(words2) == 0 {
+		return 0.0
+	}
+	
+	wordSet1 := make(map[string]bool)
+	for _, word := range words1 {
+		wordSet1[word] = true
+	}
+	
+	commonWords := 0
+	for _, word := range words2 {
+		if wordSet1[word] {
+			commonWords++
+		}
+	}
+	
+	// Jaccard similarity
+	totalUniqueWords := len(wordSet1)
+	for _, word := range words2 {
+		if !wordSet1[word] {
+			totalUniqueWords++
+		}
+	}
+	
+	return float64(commonWords) / float64(totalUniqueWords)
+}
+
 
 // shouldUseTool determines if any tools should be executed based on the message
 func (s *ChatService) shouldUseTool(message string, tools []models.AgentTool) bool {

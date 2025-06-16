@@ -114,6 +114,18 @@ export interface ChatResponse {
   sources?: KnowledgeBaseChunk[];
   toolsUsed?: string[];
   guardrailApplied?: boolean;
+  knowledgeSearchStages?: KnowledgeSearchStage[]; // 🚀 INGENIOUS ENHANCEMENT
+  metadata?: Record<string, any>;
+}
+
+// 🚀 INGENIOUS ENHANCEMENT: Knowledge Search Stages for Progressive Display
+export interface KnowledgeSearchStage {
+  stage: string;
+  query: string;
+  strategy: string;
+  result_count: number;
+  duration: string;
+  success: boolean;
   metadata?: Record<string, any>;
 }
 

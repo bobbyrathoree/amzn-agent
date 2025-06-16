@@ -2,13 +2,17 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
 import { useApiClient } from '../lib/api';
+import { KnowledgeSearchStages } from '../components/KnowledgeSearchStages';
+import { SourceCitations } from '../components/SourceCitations';
 import type { 
   Bot, 
   Conversation, 
   ConversationMeta, 
   Message, 
   ChatRequest, 
-  MessageContent 
+  MessageContent,
+  ChatResponse,
+  KnowledgeSearchStage 
 } from '../types';
 
 export function ChatPage() {
@@ -57,6 +61,10 @@ export function ChatPage() {
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 🚀 INGENIOUS ENHANCEMENT: Knowledge search stages tracking
+  const [currentSearchStages, setCurrentSearchStages] = useState<KnowledgeSearchStage[]>([]);
+  const [lastChatResponse, setLastChatResponse] = useState<ChatResponse | null>(null);
 
   // Available models for dropdown
   const availableModels = [
@@ -296,6 +304,10 @@ export function ChatPage() {
     setInput('');
     setError(null);
 
+    // 🚀 INGENIOUS ENHANCEMENT: Reset search stages for new query
+    setCurrentSearchStages([]);
+    setLastChatResponse(null);
+
     // Optimistic UI update - show user message immediately
     const tempUserMessage: Message = {
       id: `temp-${Date.now()}`,
@@ -343,8 +355,14 @@ export function ChatPage() {
         throw new Error(`Server returned HTML instead of JSON. Response: ${responseText.substring(0, 200)}...`);
       }
 
-      const chatResponse = await response.json();
+      const chatResponse: ChatResponse = await response.json();
       console.log('Chat response received:', chatResponse);
+      
+      // 🚀 INGENIOUS ENHANCEMENT: Capture search stages and sources
+      if (chatResponse.knowledgeSearchStages) {
+        setCurrentSearchStages(chatResponse.knowledgeSearchStages);
+      }
+      setLastChatResponse(chatResponse);
       
       // Reload conversation to get the latest messages
       if (conversationId) {
@@ -652,6 +670,19 @@ export function ChatPage() {
               </div>
             </div>
           ))}
+
+          {/* 🚀 INGENIOUS ENHANCEMENT: Knowledge Search Stages Display */}
+          {(isLoading || currentSearchStages.length > 0) && (
+            <KnowledgeSearchStages 
+              stages={currentSearchStages} 
+              isLoading={isLoading && currentSearchStages.length === 0}
+            />
+          )}
+
+          {/* 🚀 INGENIOUS ENHANCEMENT: Source Citations Display */}
+          {lastChatResponse?.sources && lastChatResponse.sources.length > 0 && (
+            <SourceCitations sources={lastChatResponse.sources} className="mb-4" />
+          )}
 
           {isLoading && (
             <div className="flex justify-start">

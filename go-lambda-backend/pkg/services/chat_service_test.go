@@ -77,17 +77,17 @@ func TestChatService_selectModel(t *testing.T) {
 		{
 			name:     "Single model",
 			models:   []string{"anthropic.claude-3-5-sonnet-20241022-v2:0"},
-			expected: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+			expected: "us.anthropic.claude-3-5-sonnet-20241022-v2:0",
 		},
 		{
 			name:     "Multiple models - selects first",
 			models:   []string{"anthropic.claude-3-haiku-20240307-v1:0", "anthropic.claude-3-5-sonnet-20241022-v2:0"},
-			expected: "anthropic.claude-3-haiku-20240307-v1:0",
+			expected: "us.anthropic.claude-3-haiku-20240307-v1:0",
 		},
 		{
 			name:     "Empty models - fallback",
 			models:   []string{},
-			expected: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+			expected: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
 		},
 	}
 
@@ -95,7 +95,7 @@ func TestChatService_selectModel(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := chatService.selectModel(tt.models)
+			result := chatService.selectModel(tt.models, nil)
 			if result != tt.expected {
 				t.Errorf("Expected: %s, Got: %s", tt.expected, result)
 			}
