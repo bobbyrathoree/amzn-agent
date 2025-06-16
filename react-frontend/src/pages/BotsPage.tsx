@@ -1,15 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
 import { useApiClient } from '../lib/api';
-import type { Bot } from '../types';
+import type { BotSummary } from '../types';
 
 export function BotsPage() {
   const { user, signOut, getAccessToken } = useAuth();
-  const apiClient = useApiClient(getAccessToken, () => user?.userId || user?.username || null);
-  const [bots, setBots] = useState<Bot[]>([]);
+  const getUserId = useCallback(() => user?.userId || user?.username || null, [user?.userId, user?.username]);
+  const apiClient = useApiClient(getAccessToken, getUserId);
+  const [bots, setBots] = useState<BotSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingBotId, setDeletingBotId] = useState<string | null>(null);
 
   useEffect(() => {
     if (apiClient) {
@@ -39,6 +41,35 @@ export function BotsPage() {
       console.error('Error loading bots:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const deleteBot = async (botId: string, botTitle: string) => {
+    if (!apiClient) return;
+    
+    const confirmed = window.confirm(`Are you sure you want to delete "${botTitle}"? This action cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      setDeletingBotId(botId);
+      setError(null);
+
+      const response = await apiClient.delete(`bots/${botId}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to delete bot: ${response.status} ${errorText}`);
+      }
+
+      // Remove the bot from the local state
+      setBots(prevBots => prevBots.filter(bot => bot.id !== botId));
+      
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(`Failed to delete bot: ${errorMessage}`);
+      console.error('Error deleting bot:', err);
+    } finally {
+      setDeletingBotId(null);
     }
   };
 
@@ -127,27 +158,47 @@ export function BotsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {bots.map((bot) => (
               <div key={bot.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">{bot.title}</h3>
+                <div className="flex items-start justify-between mb-2">
+                  <h3 className="text-lg font-medium text-gray-900">{bot.title}</h3>
+                  {bot.ownerUserId === (user?.userId || user?.username) ? (
+                    <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">Owned</span>
+                  ) : (
+                    <span className="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded-full">Shared</span>
+                  )}
+                </div>
                 <p className="text-gray-600 text-sm mb-4 line-clamp-3">{bot.description}</p>
                 
                 <div className="flex items-center justify-between text-xs text-gray-500 mb-4">
-                  <span>{bot.isPublic ? 'Public' : 'Private'}</span>
+                  <span>{bot.sharedScope === 'public' ? 'Public' : bot.sharedScope === 'partial' ? 'Shared' : 'Private'}</span>
                   <span>{bot.activeModels?.[0]?.split('.')[1] || 'No model'}</span>
                 </div>
                 
                 <div className="flex space-x-2">
                   <Link
-                    to={`/chat?bot=${bot.id}`}
+                    to={`/bots/${bot.id}/chat`}
                     className="flex-1 bg-blue-600 text-white px-3 py-2 rounded text-sm text-center hover:bg-blue-700 transition-colors"
                   >
                     Chat
                   </Link>
-                  <Link
-                    to={`/bots/${bot.id}/edit`}
-                    className="flex-1 bg-gray-200 text-gray-800 px-3 py-2 rounded text-sm text-center hover:bg-gray-300 transition-colors"
-                  >
-                    Edit
-                  </Link>
+                  {/* Only show Edit button if user owns the bot */}
+                  {bot.ownerUserId === (user?.userId || user?.username) && (
+                    <Link
+                      to={`/bots/${bot.id}/edit`}
+                      className="flex-1 bg-gray-200 text-gray-800 px-3 py-2 rounded text-sm text-center hover:bg-gray-300 transition-colors"
+                    >
+                      Edit
+                    </Link>
+                  )}
+                  {/* Only show Delete button if user owns the bot */}
+                  {bot.ownerUserId === (user?.userId || user?.username) && (
+                    <button
+                      onClick={() => deleteBot(bot.id, bot.title)}
+                      disabled={deletingBotId === bot.id}
+                      className="bg-red-600 text-white px-3 py-2 rounded text-sm hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {deletingBotId === bot.id ? '...' : 'Delete'}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

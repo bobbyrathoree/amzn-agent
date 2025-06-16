@@ -17,6 +17,8 @@ export class NetworkStack extends cdk.Stack {
     // Create a VPC for isolation and security
     this.vpc = new ec2.Vpc(this, 'Vpc', {
       maxAzs: 2,
+      enableDnsHostnames: true,
+      enableDnsSupport: true,
       subnetConfiguration: [
         {
           name: 'Public',

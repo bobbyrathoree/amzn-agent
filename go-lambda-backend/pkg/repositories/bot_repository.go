@@ -2,7 +2,10 @@ package repositories
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,6 +13,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
+	// AWS SDK v1 for workaround
+	"github.com/aws/aws-sdk-go/aws/session"
+	dynamodbv1 "github.com/aws/aws-sdk-go/service/dynamodb"
+	awsv1 "github.com/aws/aws-sdk-go/aws"
 
 	"github.com/bobbyrathore/go-lambda-backend/pkg/models"
 )
@@ -52,20 +60,45 @@ type BotRepository interface {
 
 // DynamoBotRepository handles data persistence for full-featured bots using DynamoDB
 type DynamoBotRepository struct {
-	client    *dynamodb.Client
-	tableName string
+	client     *dynamodb.Client  // Keep for compatibility
+	clientV1   *dynamodbv1.DynamoDB // SDK v1 for actual operations
+	tableName  string
+	useV1Fallback bool
 }
 
-// NewBotRepository creates a new full-featured BotRepository
+// NewBotRepository creates a new full-featured BotRepository with SDK v1 workaround
 func NewBotRepository(client *dynamodb.Client, tableName string) BotRepository {
+	// Create SDK v1 client as workaround for ResolveEndpointV2 issues
+	var clientV1 *dynamodbv1.DynamoDB
+	useV1Fallback := false
+	
+	sess, err := session.NewSession()
+	if err != nil {
+		log.Printf("⚠️ Failed to create AWS SDK v1 session: %v", err)
+	} else {
+		clientV1 = dynamodbv1.New(sess)
+		// Test SDK v1 connectivity
+		_, testErr := clientV1.ListTables(&dynamodbv1.ListTablesInput{})
+		if testErr != nil {
+			log.Printf("⚠️ AWS SDK v1 test failed: %v", testErr)
+		} else {
+			log.Printf("✅ AWS SDK v1 DynamoDB working - using as workaround")
+			useV1Fallback = true
+		}
+	}
+	
 	return &DynamoBotRepository{
-		client:    client,
-		tableName: tableName,
+		client:        client,
+		clientV1:      clientV1,
+		tableName:     tableName,
+		useV1Fallback: useV1Fallback,
 	}
 }
 
 // Create creates a new bot in DynamoDB with full-featured support
 func (r *DynamoBotRepository) Create(ctx context.Context, bot *models.Bot) error {
+	log.Printf("🤖 BotRepository.Create: Starting bot creation for ID: %s", bot.ID)
+	
 	// Set update time
 	now := time.Now()
 	bot.UpdateTime = now
@@ -76,11 +109,20 @@ func (r *DynamoBotRepository) Create(ctx context.Context, bot *models.Bot) error
 		bot.LastUsedTime = now
 	}
 	
+	if r.useV1Fallback && r.clientV1 != nil {
+		log.Printf("🔧 BotRepository.Create: Using AWS SDK v1 workaround...")
+		return r.createWithV1(ctx, bot)
+	}
+	
+	log.Printf("🔧 BotRepository.Create: Using AWS SDK v2 (might fail)...")
+	log.Printf("🔧 BotRepository.Create: Marshaling bot data...")
 	item, err := attributevalue.MarshalMap(bot)
 	if err != nil {
+		log.Printf("❌ BotRepository.Create: Failed to marshal bot: %v", err)
 		return fmt.Errorf("failed to marshal bot: %w", err)
 	}
 
+	log.Printf("📊 BotRepository.Create: Calling DynamoDB PutItem on table: %s", r.tableName)
 	_, err = r.client.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName:           aws.String(r.tableName),
 		Item:                item,
@@ -88,10 +130,212 @@ func (r *DynamoBotRepository) Create(ctx context.Context, bot *models.Bot) error
 	})
 	
 	if err != nil {
+		log.Printf("❌ BotRepository.Create: DynamoDB PutItem failed: %v", err)
+		log.Printf("🔍 BotRepository.Create: Error type: %T", err)
 		return fmt.Errorf("failed to create bot: %w", err)
 	}
 
+	log.Printf("✅ BotRepository.Create: Bot created successfully in DynamoDB")
 	return nil
+}
+
+// createWithV1 creates a bot using AWS SDK v1 as a workaround
+func (r *DynamoBotRepository) createWithV1(ctx context.Context, bot *models.Bot) error {
+	log.Printf("🔧 BotRepository.createWithV1: Marshaling bot data for SDK v1...")
+	log.Printf("🔍 BotRepository.createWithV1: Bot ID before conversion: %s", bot.ID)
+	
+	// Convert bot to JSON then to SDK v1 attribute map
+	botJSON, err := json.Marshal(bot)
+	if err != nil {
+		log.Printf("❌ BotRepository.createWithV1: Failed to marshal bot to JSON: %v", err)
+		return fmt.Errorf("failed to marshal bot to JSON: %w", err)
+	}
+	
+	log.Printf("🔍 BotRepository.createWithV1: Bot JSON length: %d bytes", len(botJSON))
+	// Don't log full JSON as it might be large, but check if ID is there
+	if strings.Contains(string(botJSON), `"id":`) {
+		log.Printf("✅ BotRepository.createWithV1: ID field found in JSON")
+	} else {
+		log.Printf("❌ BotRepository.createWithV1: ID field NOT found in JSON!")
+		log.Printf("🔍 BotRepository.createWithV1: JSON snippet: %.200s", string(botJSON))
+	}
+	
+	var botMap map[string]interface{}
+	if err := json.Unmarshal(botJSON, &botMap); err != nil {
+		log.Printf("❌ BotRepository.createWithV1: Failed to unmarshal bot JSON: %v", err)
+		return fmt.Errorf("failed to unmarshal bot JSON: %w", err)
+	}
+	
+	// Check if ID exists in the map
+	if idValue, exists := botMap["id"]; exists {
+		log.Printf("✅ BotRepository.createWithV1: ID field found in map: %v", idValue)
+	} else {
+		log.Printf("❌ BotRepository.createWithV1: ID field NOT found in map!")
+		log.Printf("🔍 BotRepository.createWithV1: Available keys: %v", getKeys(botMap))
+	}
+	
+	// Convert to SDK v1 attribute values
+	item, err := r.convertMapToV1AttributeValues(botMap)
+	if err != nil {
+		log.Printf("❌ BotRepository.createWithV1: Failed to convert to v1 attributes: %v", err)
+		return fmt.Errorf("failed to convert to v1 attributes: %w", err)
+	}
+	
+	// Fix the primary key name: DynamoDB table expects "ID" but our model uses "id"
+	if idAttr, exists := item["id"]; exists {
+		item["ID"] = idAttr  // Copy to uppercase key name
+		delete(item, "id")   // Remove lowercase key
+		log.Printf("🔧 BotRepository.createWithV1: Fixed primary key: id -> ID")
+	}
+	
+	// Check if ID exists in the final item (now uppercase)
+	if idAttr, exists := item["ID"]; exists {
+		log.Printf("✅ BotRepository.createWithV1: ID attribute found in final item: %v", idAttr)
+	} else {
+		log.Printf("❌ BotRepository.createWithV1: ID attribute NOT found in final item!")
+		log.Printf("🔍 BotRepository.createWithV1: Available attribute keys: %v", getAttributeKeys(item))
+	}
+	
+	log.Printf("📊 BotRepository.createWithV1: Calling SDK v1 PutItem on table: %s", r.tableName)
+	_, err = r.clientV1.PutItem(&dynamodbv1.PutItemInput{
+		TableName:           awsv1.String(r.tableName),
+		Item:                item,
+		ConditionExpression: awsv1.String("attribute_not_exists(ID)"),
+	})
+	
+	if err != nil {
+		log.Printf("❌ BotRepository.createWithV1: SDK v1 PutItem failed: %v", err)
+		return fmt.Errorf("failed to create bot with SDK v1: %w", err)
+	}
+	
+	log.Printf("✅ BotRepository.createWithV1: Bot created successfully with SDK v1")
+	return nil
+}
+
+// convertMapToV1AttributeValues converts a generic map to SDK v1 DynamoDB attribute values
+func (r *DynamoBotRepository) convertMapToV1AttributeValues(data map[string]interface{}) (map[string]*dynamodbv1.AttributeValue, error) {
+	result := make(map[string]*dynamodbv1.AttributeValue)
+	
+	for key, value := range data {
+		av, err := r.convertValueToV1AttributeValue(value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert field %s: %w", key, err)
+		}
+		if av != nil { // Skip nil values
+			result[key] = av
+		}
+	}
+	
+	return result, nil
+}
+
+// convertValueToV1AttributeValue converts a Go value to SDK v1 DynamoDB attribute value
+func (r *DynamoBotRepository) convertValueToV1AttributeValue(value interface{}) (*dynamodbv1.AttributeValue, error) {
+	if value == nil {
+		return nil, nil // Skip nil values
+	}
+	
+	switch v := value.(type) {
+	case string:
+		if v == "" {
+			return nil, nil // Skip empty strings
+		}
+		return &dynamodbv1.AttributeValue{S: awsv1.String(v)}, nil
+		
+	case bool:
+		return &dynamodbv1.AttributeValue{BOOL: awsv1.Bool(v)}, nil
+		
+	case float64:
+		return &dynamodbv1.AttributeValue{N: awsv1.String(strconv.FormatFloat(v, 'f', -1, 64))}, nil
+		
+	case int:
+		return &dynamodbv1.AttributeValue{N: awsv1.String(strconv.Itoa(v))}, nil
+		
+	case int64:
+		return &dynamodbv1.AttributeValue{N: awsv1.String(strconv.FormatInt(v, 10))}, nil
+		
+	case []interface{}:
+		if len(v) == 0 {
+			return nil, nil // Skip empty arrays
+		}
+		
+		// Check if it's a string array
+		var stringList []*string
+		allStrings := true
+		for _, item := range v {
+			if str, ok := item.(string); ok && str != "" {
+				stringList = append(stringList, awsv1.String(str))
+			} else {
+				allStrings = false
+				break
+			}
+		}
+		
+		if allStrings && len(stringList) > 0 {
+			return &dynamodbv1.AttributeValue{SS: stringList}, nil
+		}
+		
+		// Otherwise, treat as a list of mixed values
+		var list []*dynamodbv1.AttributeValue
+		for _, item := range v {
+			av, err := r.convertValueToV1AttributeValue(item)
+			if err != nil {
+				return nil, err
+			}
+			if av != nil {
+				list = append(list, av)
+			}
+		}
+		
+		if len(list) > 0 {
+			return &dynamodbv1.AttributeValue{L: list}, nil
+		}
+		return nil, nil
+		
+	case map[string]interface{}:
+		if len(v) == 0 {
+			return nil, nil // Skip empty maps
+		}
+		
+		subMap, err := r.convertMapToV1AttributeValues(v)
+		if err != nil {
+			return nil, err
+		}
+		
+		if len(subMap) > 0 {
+			return &dynamodbv1.AttributeValue{M: subMap}, nil
+		}
+		return nil, nil
+		
+	default:
+		// For complex types, try to marshal to JSON and store as string
+		jsonBytes, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("unsupported type %T: %w", v, err)
+		}
+		jsonStr := string(jsonBytes)
+		if jsonStr == "null" || jsonStr == "" {
+			return nil, nil
+		}
+		return &dynamodbv1.AttributeValue{S: awsv1.String(jsonStr)}, nil
+	}
+}
+
+// Helper functions for debugging
+func getKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func getAttributeKeys(m map[string]*dynamodbv1.AttributeValue) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // GetByID retrieves a bot by its ID

@@ -25,7 +25,7 @@ var (
 // BotService handles business logic for full-featured bot operations
 type BotService struct {
 	botRepo           repositories.BotRepository
-	cdkService        CDKDeploymentServiceInterface
+	cfnService        CloudFormationServiceInterface
 	stackOutputService StackOutputServiceInterface
 	region            string
 	envPrefix         string
@@ -34,13 +34,13 @@ type BotService struct {
 // NewBotService creates a new BotService with full-featured capabilities
 func NewBotService(
 	botRepo repositories.BotRepository,
-	cdkService CDKDeploymentServiceInterface,
+	cfnService CloudFormationServiceInterface,
 	stackOutputService StackOutputServiceInterface,
 	region, envPrefix string,
 ) *BotService {
 	return &BotService{
 		botRepo:           botRepo,
-		cdkService:        cdkService,
+		cfnService:        cfnService,
 		stackOutputService: stackOutputService,
 		region:            region,
 		envPrefix:         envPrefix,
@@ -123,9 +123,12 @@ func (s *BotService) CreateBot(ctx context.Context, req *models.CreateBotRequest
 		// No stack deployment needed
 		
 		// Save bot to database
+		log.Printf("💾 BotService.CreateBot: Saving bot to database...")
 		if err := s.botRepo.Create(ctx, bot); err != nil {
+			log.Printf("❌ BotService.CreateBot: Failed to save bot to database: %v", err)
 			return nil, fmt.Errorf("failed to create bot with existing KB: %w", err)
 		}
+		log.Printf("✅ BotService.CreateBot: Bot saved to database successfully")
 		
 		return &CreateBotResult{
 			Bot:                   bot,
@@ -144,9 +147,12 @@ func (s *BotService) CreateBot(ctx context.Context, req *models.CreateBotRequest
 		bot.StackStatus = &initialStatus
 		
 		// Save bot to database with stack in progress
+		log.Printf("💾 BotService.CreateBot: Saving bot to database with stack in progress...")
 		if err := s.botRepo.Create(ctx, bot); err != nil {
+			log.Printf("❌ BotService.CreateBot: Failed to save bot to database: %v", err)
 			return nil, fmt.Errorf("failed to create bot record: %w", err)
 		}
+		log.Printf("✅ BotService.CreateBot: Bot saved to database successfully")
 		
 		// Start asynchronous stack deployment
 		go s.deployBotKnowledgeBaseStackAsync(context.Background(), botID, ownerUserID, req)
@@ -166,23 +172,36 @@ func (s *BotService) CreateBot(ctx context.Context, req *models.CreateBotRequest
 func (s *BotService) deployBotKnowledgeBaseStackAsync(ctx context.Context, botID, ownerUserID string, req *models.CreateBotRequest) {
 	log.Printf("🚀 Starting async deployment for bot: %s", botID)
 	
+	// Add panic recovery to prevent silent failures
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("🚨 PANIC in async deployment for bot %s: %v", botID, r)
+			// Update status to failed
+			failureReason := fmt.Sprintf("Deployment panic: %v", r)
+			if err := s.UpdateSyncStatusToFailed(ctx, botID, "", failureReason); err != nil {
+				log.Printf("❌ Failed to update panic status for bot %s: %v", botID, err)
+			}
+		}
+	}()
+	
 	// Update sync status to RUNNING
 	execID := uuid.New().String()
 	err := s.UpdateSyncStatusToRunning(ctx, botID, execID)
 	if err != nil {
 		log.Printf("⚠️ Failed to update sync status to running for bot %s: %v", botID, err)
+		// Don't return here - try to continue with deployment
 	}
 	
 	// Prepare deployment request
-	deployReq := CDKDeploymentRequest{
+	deployReq := KnowledgeBaseStackRequest{
 		BotID:                   botID,
 		OwnerUserID:             ownerUserID,
 		Instruction:             req.Instruction,
 		KnowledgeBaseCreation:   req.KnowledgeBaseCreation,
 	}
 	
-	// Deploy the stack
-	result, err := s.cdkService.DeployBotKnowledgeBaseStack(ctx, deployReq)
+	// Deploy the stack using CloudFormation
+	result, err := s.cfnService.CreateKnowledgeBaseStack(ctx, deployReq)
 	if err != nil {
 		log.Printf("❌ Stack deployment failed for bot %s: %v", botID, err)
 		
@@ -210,17 +229,16 @@ func (s *BotService) deployBotKnowledgeBaseStackAsync(ctx context.Context, botID
 	
 	// Update bot with deployment results
 	updateReq := &models.UpdateBotRequest{
-		KnowledgeBaseID:     result.KnowledgeBaseID,
-		StackStatus:         &result.StackStatus,
-		DocumentBucketName:  result.DocumentBucketName,
-		GuardrailArn:        result.GuardrailArn,
-		GuardrailVersion:    result.GuardrailVersion,
+		KnowledgeBaseID:     &result.KnowledgeBaseId,
+		StackStatus:         &result.Status,
+		DocumentBucketName:  &result.S3BucketName,
+		// GuardrailArn and GuardrailVersion not available in our simple CloudFormation template
 	}
 	
 	if err := s.botRepo.Update(ctx, botID, updateReq); err != nil {
 		log.Printf("❌ Failed to update bot with deployment results: %v", err)
 	} else {
-		log.Printf("✅ Bot %s updated with Knowledge Base ID: %s", botID, *result.KnowledgeBaseID)
+		log.Printf("✅ Bot %s updated with Knowledge Base ID: %s", botID, result.KnowledgeBaseId)
 	}
 }
 
@@ -260,6 +278,14 @@ func (s *BotService) ListBots(ctx context.Context, userID string, userGroups []s
 		}
 		allBots = publicBots
 		
+	case "shared":
+		// Only shared bots (bots shared with this user)
+		sharedBots, err := s.botRepo.GetSharedBots(ctx, userID, userGroups)
+		if err != nil {
+			return nil, err
+		}
+		allBots = sharedBots
+		
 	case "accessible":
 		// All bots user can access (own + shared + public)
 		userBots, err := s.botRepo.GetByOwner(ctx, userID)
@@ -283,7 +309,7 @@ func (s *BotService) ListBots(ctx context.Context, userID string, userGroups []s
 		allBots = append(allBots, publicBots...)
 		
 	default:
-		return nil, fmt.Errorf("invalid scope: %s. Must be private, public, or accessible", scope)
+		return nil, fmt.Errorf("invalid scope: %s. Must be private, public, shared, or accessible", scope)
 	}
 
 	// Filter by starred status if requested
@@ -390,7 +416,8 @@ func (s *BotService) DeleteBot(ctx context.Context, botID, userID string, userGr
 	if bot.HasDynamicKnowledgeBase() {
 		log.Printf("🗑️ Destroying Knowledge Base stack for bot: %s", botID)
 		
-		if err := s.cdkService.DestroyBotKnowledgeBaseStack(ctx, botID); err != nil {
+		stackName := fmt.Sprintf("BrChatKbStack%s", botID)
+		if err := s.cfnService.DeleteStack(ctx, stackName); err != nil {
 			log.Printf("❌ Failed to destroy stack for bot %s: %v", botID, err)
 			// Continue with bot deletion even if stack destruction fails
 		}

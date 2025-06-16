@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -74,6 +75,8 @@ func (h *BotHandler) HandleBotRequest(ctx context.Context, request events.APIGat
 	case "POST":
 		if len(pathSegments) == 1 { // POST /bots
 			return h.createBot(ctx, request, userID)
+		} else if len(pathSegments) == 3 && pathSegments[2] == "access" { // POST /bots/{id}/access
+			return h.addBotAccess(ctx, pathSegments[1], userID, userGroups)
 		}
 	case "PUT", "PATCH":
 		if len(pathSegments) == 2 { // PUT/PATCH /bots/{id}
@@ -92,12 +95,47 @@ func (h *BotHandler) HandleBotRequest(ctx context.Context, request events.APIGat
 	return utils.ErrorResponse(errors.New("Endpoint not found"), http.StatusNotFound), nil
 }
 
+// addBotAccess handles POST /bots/{id}/access - creates bot alias for user to access shared bot
+func (h *BotHandler) addBotAccess(ctx context.Context, botID, userID string, userGroups []string) (events.APIGatewayProxyResponse, error) {
+	// Get or create bot alias for the shared bot
+	alias, err := h.botService.GetOrCreateBotAlias(ctx, botID, userID, userGroups)
+	if err != nil {
+		if err == services.ErrBotNotFound {
+			return utils.ErrorResponse(errors.New("Bot not found"), http.StatusNotFound), nil
+		}
+		if err == services.ErrUnauthorized {
+			return utils.ErrorResponse(errors.New("Access denied: bot is not accessible to you"), http.StatusForbidden), nil
+		}
+		return utils.ErrorResponse(errors.New("Failed to add bot access"), http.StatusInternalServerError), nil
+	}
+
+	// If alias is nil, user already owns the bot
+	if alias == nil {
+		return utils.ErrorResponse(errors.New("You already own this bot"), http.StatusBadRequest), nil
+	}
+
+	response := map[string]interface{}{
+		"message":    "Bot added to your collection successfully",
+		"alias":      alias.ToSummary(),
+		"requestId":  h.generateRequestID(),
+	}
+
+	return utils.NewAPIResponse(http.StatusCreated, response), nil
+}
+
 // listBots handles GET /bots
 func (h *BotHandler) listBots(ctx context.Context, request events.APIGatewayProxyRequest, userID string, userGroups []string) (events.APIGatewayProxyResponse, error) {
-	// Parse query parameters
-	scope := request.QueryStringParameters["scope"] // private, shared, all
-	starred := request.QueryStringParameters["starred"] == "true"
-	limitStr := request.QueryStringParameters["limit"]
+	// Parse query parameters (handle nil case)
+	var scope, limitStr string
+	var starred bool
+	if request.QueryStringParameters != nil {
+		scope = request.QueryStringParameters["scope"]
+		starred = request.QueryStringParameters["starred"] == "true"
+		limitStr = request.QueryStringParameters["limit"]
+	}
+	if scope == "" {
+		scope = "private" // Default to private bots (user's own bots)
+	}
 	limit := 100 // default
 	if limitStr != "" {
 		fmt.Sscanf(limitStr, "%d", &limit)
@@ -145,14 +183,25 @@ func (h *BotHandler) getBot(ctx context.Context, botID, userID string, userGroup
 
 // createBot handles POST /bots
 func (h *BotHandler) createBot(ctx context.Context, request events.APIGatewayProxyRequest, userID string) (events.APIGatewayProxyResponse, error) {
+	log.Printf("🤖 Creating bot for user: %s", userID)
+	log.Printf("📝 Request body length: %d bytes", len(request.Body))
+	
 	var createReq models.CreateBotRequest
 	if err := json.Unmarshal([]byte(request.Body), &createReq); err != nil {
-		return utils.ErrorResponse(errors.New("Invalid JSON"), http.StatusBadRequest), nil
+		log.Printf("❌ JSON unmarshal error: %v", err)
+		return utils.ErrorResponse(errors.New("Invalid JSON format"), http.StatusBadRequest), nil
 	}
+
+	// Log key request details for debugging
+	log.Printf("📋 Bot details - Title: %s, KB Option: %v, Tools: %d", 
+		createReq.Title, 
+		createReq.ExistingKnowledgeBaseID != nil || createReq.KnowledgeBaseCreation != nil,
+		len(createReq.AgentTools))
 
 	// Validate request
 	if err := h.validator.Struct(&createReq); err != nil {
-		return utils.ErrorResponse(errors.New("Validation failed"), http.StatusBadRequest), nil
+		log.Printf("❌ Validation error: %v", err)
+		return utils.ErrorResponse(fmt.Errorf("Validation failed: %v", err), http.StatusBadRequest), nil
 	}
 
 	// Set defaults if not provided
@@ -170,10 +219,15 @@ func (h *BotHandler) createBot(ctx context.Context, request events.APIGatewayPro
 	}
 
 	// Create bot using the service
+	log.Printf("🚀 Calling BotService.CreateBot...")
 	result, err := h.botService.CreateBot(ctx, &createReq, userID, []string{})
 	if err != nil {
-		return utils.ErrorResponse(errors.New("Failed to create bot: " + err.Error()), http.StatusInternalServerError), nil
+		log.Printf("❌ Bot creation failed: %v", err)
+		return utils.ErrorResponse(fmt.Errorf("Failed to create bot: %v", err), http.StatusInternalServerError), nil
 	}
+	
+	log.Printf("✅ Bot created successfully - ID: %s, Stack deployment: %v", 
+		result.Bot.ID, result.StackDeploymentStarted)
 
 	response := models.BotResponse{
 		Bot:       result.Bot,

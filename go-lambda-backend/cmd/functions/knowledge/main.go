@@ -22,9 +22,9 @@ func init() {
 	// Load configuration
 	cfg = appConfig.NewConfig()
 
-	// Initialize AWS SDK
+	// Initialize AWS SDK (Lambda provides AWS_REGION by default)
 	awsConfig, err := config.LoadDefaultConfig(context.Background(),
-		config.WithRegion(os.Getenv("REGION")),
+		config.WithRegion(os.Getenv("AWS_REGION")),
 	)
 	if err != nil {
 		log.Fatalf("Unable to load AWS SDK config: %v", err)

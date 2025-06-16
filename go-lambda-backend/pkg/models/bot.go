@@ -58,7 +58,7 @@ type Bot struct {
 	GenerationParams      GenerationParams       `json:"generationParams" dynamodbav:"generationParams"`
 	ConversationStarters  []ConversationStarter  `json:"conversationStarters" dynamodbav:"conversationStarters"`
 	ActiveModels          []string               `json:"activeModels" dynamodbav:"activeModels"`
-	AgentTools            []string               `json:"agentTools" dynamodbav:"agentTools"`
+	AgentTools            []AgentTool            `json:"agentTools" dynamodbav:"agentTools"`
 	DisplayRetrievedChunks bool                  `json:"displayRetrievedChunks" dynamodbav:"displayRetrievedChunks"`
 }
 
@@ -120,6 +120,82 @@ type ConversationStarter struct {
 	Example string `json:"example" dynamodbav:"example" validate:"required,max=500"`
 }
 
+// AgentTool represents a tool that can be used by the AI agent
+// This follows bedrock-chat's polymorphic tool system
+type AgentTool struct {
+	Type        string                 `json:"type" dynamodbav:"type" validate:"required,oneof=plain internet bedrock_agent"`
+	Name        string                 `json:"name" dynamodbav:"name" validate:"required"`
+	Description string                 `json:"description" dynamodbav:"description" validate:"required"`
+	Config      map[string]interface{} `json:"config,omitempty" dynamodbav:"config,omitempty"`
+}
+
+// PlainTool represents a basic tool without external dependencies
+type PlainTool struct {
+	Name        string `json:"name" validate:"required"`
+	Description string `json:"description" validate:"required"`
+}
+
+// InternetTool represents a tool that performs internet searches
+type InternetTool struct {
+	Name         string `json:"name" validate:"required"`
+	Description  string `json:"description" validate:"required"`
+	SearchEngine string `json:"searchEngine" validate:"oneof=tavily duckduckgo google"`
+	APIKey       string `json:"apiKey,omitempty"` // For services that require API keys
+	MaxResults   int    `json:"maxResults" validate:"min=1,max=20"`
+}
+
+// BedrockAgentTool represents integration with AWS Bedrock Agents
+type BedrockAgentTool struct {
+	Name        string `json:"name" validate:"required"`
+	Description string `json:"description" validate:"required"`
+	AgentID     string `json:"agentId" validate:"required"`
+	AgentAlias  string `json:"agentAlias" validate:"required"`
+	Region      string `json:"region" validate:"required"`
+}
+
+// Tool configuration helpers
+func NewPlainTool(name, description string) AgentTool {
+	return AgentTool{
+		Type:        "plain",
+		Name:        name,
+		Description: description,
+		Config: map[string]interface{}{
+			"toolType": "plain",
+		},
+	}
+}
+
+func NewInternetTool(name, description, searchEngine string, maxResults int) AgentTool {
+	config := map[string]interface{}{
+		"toolType":     "internet",
+		"searchEngine": searchEngine,
+		"maxResults":   maxResults,
+	}
+	
+	return AgentTool{
+		Type:        "internet",
+		Name:        name,
+		Description: description,
+		Config:      config,
+	}
+}
+
+func NewBedrockAgentTool(name, description, agentID, agentAlias, region string) AgentTool {
+	config := map[string]interface{}{
+		"toolType":   "bedrock_agent",
+		"agentId":    agentID,
+		"agentAlias": agentAlias,
+		"region":     region,
+	}
+	
+	return AgentTool{
+		Type:        "bedrock_agent",
+		Name:        name,
+		Description: description,
+		Config:      config,
+	}
+}
+
 // CreateBotRequest represents the input to create a new bot with full-featured support
 type CreateBotRequest struct {
 	// Core properties
@@ -143,7 +219,7 @@ type CreateBotRequest struct {
 	KnowledgeBaseConfig   KnowledgeBaseConfig    `json:"knowledgeBaseConfig"`
 	ConversationStarters  []ConversationStarter  `json:"conversationStarters"`
 	ActiveModels          []string               `json:"activeModels"`
-	AgentTools            []string               `json:"agentTools"`
+	AgentTools            []AgentTool            `json:"agentTools"`
 	DisplayRetrievedChunks bool                  `json:"displayRetrievedChunks"`
 }
 
@@ -216,7 +292,7 @@ type UpdateBotRequest struct {
 	GenerationParams      *GenerationParams      `json:"generationParams"`
 	ConversationStarters  []ConversationStarter  `json:"conversationStarters"`
 	ActiveModels          []string               `json:"activeModels"`
-	AgentTools            []string               `json:"agentTools"`
+	AgentTools            []AgentTool            `json:"agentTools"`
 	DisplayRetrievedChunks *bool                 `json:"displayRetrievedChunks"`
 }
 
@@ -238,17 +314,18 @@ type BotsResponse struct {
 
 // BotSummary represents a minimal bot for listing purposes
 type BotSummary struct {
-	ID                   string    `json:"id"`
-	Title                string    `json:"title"`
-	Description          string    `json:"description"`
-	IsStarred            bool      `json:"isStarred"`
-	OwnerUserID          string    `json:"ownerUserId"`
-	CreateTime           time.Time `json:"createTime"`
-	LastUsedTime         time.Time `json:"lastUsedTime"`
+	ID                   string                `json:"id"`
+	Title                string                `json:"title"`
+	Description          string                `json:"description"`
+	IsStarred            bool                  `json:"isStarred"`
+	OwnerUserID          string                `json:"ownerUserId"`
+	CreateTime           time.Time             `json:"createTime"`
+	LastUsedTime         time.Time             `json:"lastUsedTime"`
 	HasKnowledgeBase     bool                  `json:"hasKnowledgeBase"`
 	ConversationStarters []ConversationStarter `json:"conversationStarters"`
 	SharedScope          string                `json:"sharedScope"`
-	SharedStatus         string    `json:"sharedStatus"`
+	SharedStatus         string                `json:"sharedStatus"`
+	ActiveModels         []string              `json:"activeModels"`
 }
 
 // Available models for bot configuration
@@ -264,12 +341,21 @@ var AvailableModels = []string{
 	"meta.llama3-2-1b-instruct-v1:0",
 }
 
-// Available agent tools
-var AvailableAgentTools = []string{
-	"web_search",
-	"calculator",
-	"code_interpreter",
-	"file_analysis",
+// Available agent tools - predefined tools that can be used
+var AvailableAgentTools = []AgentTool{
+	NewPlainTool("calculator", "Perform mathematical calculations and solve equations"),
+	NewPlainTool("code_interpreter", "Execute and analyze code in various programming languages"),
+	NewPlainTool("file_analysis", "Analyze and process file contents and metadata"),
+	NewInternetTool("web_search", "Search the internet for current information", "duckduckgo", 10),
+}
+
+// GetAvailableToolNames returns just the names of available tools for backward compatibility
+func GetAvailableToolNames() []string {
+	names := make([]string, len(AvailableAgentTools))
+	for i, tool := range AvailableAgentTools {
+		names[i] = tool.Name
+	}
+	return names
 }
 
 // Default generation parameters
@@ -436,6 +522,7 @@ func (b *Bot) ToSummary() BotSummary {
 		ConversationStarters: b.ConversationStarters,
 		SharedScope:          b.SharedScope,
 		SharedStatus:         b.SharedStatus,
+		ActiveModels:         b.ActiveModels,
 	}
 }
 
@@ -492,6 +579,7 @@ func (a *BotAlias) ToSummary() BotSummary {
 		ConversationStarters: a.ConversationStarters,
 		SharedScope:          a.SharedScope,
 		SharedStatus:         a.SharedStatus,
+		ActiveModels:         []string{}, // TODO: Cache active models from original bot or fetch dynamically
 	}
 }
 

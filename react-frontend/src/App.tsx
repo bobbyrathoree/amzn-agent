@@ -4,6 +4,9 @@ import { LoginModal } from './components/LoginModal';
 import { HomePage } from './pages/HomePage';
 import { ChatPage } from './pages/ChatPage';
 import { BotsPage } from './pages/BotsPage';
+import { BotCreatePage } from './pages/BotCreatePage';
+import { BotEditPage } from './pages/BotEditPage';
+import { DiscoverPage } from './pages/DiscoverPage';
 import { useConfig } from './hooks/useConfig';
 
 function AppContent() {
@@ -71,7 +74,12 @@ function AppWithAuth() {
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/chat" element={<ChatPage />} />
+      <Route path="/bots/:botId/chat" element={<ChatPage />} />
       <Route path="/bots" element={<BotsPage />} />
+      <Route path="/bots/create" element={<BotCreatePage />} />
+      <Route path="/bots/:botId/edit" element={<BotEditPage />} />
+      <Route path="/discover" element={<DiscoverPage />} />
+      <Route path="/marketplace" element={<DiscoverPage />} />
     </Routes>
   );
 }

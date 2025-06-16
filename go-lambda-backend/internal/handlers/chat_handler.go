@@ -3,131 +3,532 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
+	"log"
 	"net/http"
-	"strconv"
+	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/bobbyrathore/go-lambda-backend/internal/middleware"
-	"github.com/bobbyrathore/go-lambda-backend/pkg/models"
 	"github.com/bobbyrathore/go-lambda-backend/pkg/services"
-	"github.com/bobbyrathore/go-lambda-backend/pkg/utils"
+	"github.com/bobbyrathore/go-lambda-backend/pkg/models"
+	"github.com/bobbyrathore/go-lambda-backend/pkg/repositories"
 )
 
-// ChatHandler handles API Gateway events for chat operations
+// ChatHandler handles chat-related requests with full conversation management
 type ChatHandler struct {
-	service   *services.ChatService
-	validator *middleware.Validator
+	chatService          *services.ChatService
+	conversationRepo     repositories.ConversationRepository
+	botService          *services.BotService
 }
 
-// NewChatHandler creates a new ChatHandler
-func NewChatHandler(service *services.ChatService) *ChatHandler {
+// NewChatHandler creates a new ChatHandler with conversation management
+func NewChatHandler(
+	chatService *services.ChatService,
+	conversationRepo repositories.ConversationRepository,
+	botService *services.BotService,
+) *ChatHandler {
 	return &ChatHandler{
-		service:   service,
-		validator: middleware.NewValidator(),
+		chatService:      chatService,
+		conversationRepo: conversationRepo,
+		botService:       botService,
 	}
 }
 
-// HandleChatMessage handles requests to send a chat message
-func (h *ChatHandler) HandleChatMessage(ctx context.Context, request events.APIGatewayProxyRequest, userID string) (events.APIGatewayProxyResponse, error) {
-	// Parse and validate the request
-	var req models.ChatInput
-	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
-		return utils.ErrorResponse(
-			errors.New("invalid JSON in request body"),
-			http.StatusBadRequest,
-		), nil
+// HandleBotChat handles POST /bots/{id}/chat requests
+func (h *ChatHandler) HandleBotChat(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	// Extract bot ID from path parameters
+	botID := request.PathParameters["id"]
+	if botID == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Bot ID is required"}`,
+		}, nil
 	}
 
-	if err := h.validator.Validate(&req); err != nil {
-		return utils.ErrorResponse(err, http.StatusBadRequest), nil
+	log.Printf("💬 Processing chat request for bot: %s", botID)
+
+	// Parse request body
+	var chatReq services.ChatRequest
+	if err := json.Unmarshal([]byte(request.Body), &chatReq); err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Invalid request body"}`,
+		}, nil
 	}
 
-	// Call the service to create the chat message
-	response, err := h.service.CreateChatMessage(ctx, req, userID)
+	if chatReq.Message == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Message is required"}`,
+		}, nil
+	}
+
+	// Extract user information from request context
+	userID := request.Headers["x-user-id"]
+	if userID == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusUnauthorized,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "User ID required"}`,
+		}, nil
+	}
+	
+	// TODO: Extract user groups from JWT token or user service
+	userGroups := []string{} // For now, extract from headers if available
+	isAdmin := false // For now, could be determined from user roles
+
+	// Process chat with the bot
+	response, err := h.chatService.ChatWithBot(ctx, botID, userID, userGroups, isAdmin, &chatReq)
 	if err != nil {
-		if err == models.ErrNotAuthorized {
-			return utils.ErrorResponse(err, http.StatusForbidden), nil
+		log.Printf("❌ Chat processing failed: %v", err)
+
+		// Handle different error types
+		if isNotFoundError(err) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusNotFound,
+				Headers:    corsHeaders(),
+				Body:       fmt.Sprintf(`{"error": "Bot not found: %s"}`, botID),
+			}, nil
 		}
-		return utils.ErrorResponse(err, http.StatusInternalServerError), nil
+
+		if isAccessDeniedError(err) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusForbidden,
+				Headers:    corsHeaders(),
+				Body:       `{"error": "Access denied to bot"}`,
+			}, nil
+		}
+
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Headers:    corsHeaders(),
+			Body:       fmt.Sprintf(`{"error": "Chat processing failed: %s"}`, err.Error()),
+		}, nil
 	}
 
-	// Return the successful response
-	return utils.SuccessResponse(response), nil
+	// Marshal response
+	responseBody, err := json.Marshal(response)
+	if err != nil {
+		log.Printf("❌ Failed to marshal chat response: %v", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Failed to prepare response"}`,
+		}, nil
+	}
+
+	log.Printf("✅ Chat response sent for bot %s", botID)
+
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Headers:    corsHeaders(),
+		Body:       string(responseBody),
+	}, nil
 }
 
-// HandleListConversations handles requests to list conversations
-func (h *ChatHandler) HandleListConversations(ctx context.Context, request events.APIGatewayProxyRequest, userID string) (events.APIGatewayProxyResponse, error) {
-	// Extract query parameters
-	limitStr := request.QueryStringParameters["limit"]
-	nextToken := request.QueryStringParameters["nextToken"]
+// HandleGetBotConversations handles GET /bots/{id}/conversations
+func (h *ChatHandler) HandleGetBotConversations(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	botID := request.PathParameters["id"]
+	if botID == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Bot ID is required"}`,
+		}, nil
+	}
 
-	// Parse limit parameter
-	limit := 20 // Default limit
-	if limitStr != "" {
-		parsedLimit, err := strconv.Atoi(limitStr)
-		if err == nil && parsedLimit > 0 && parsedLimit <= 100 {
-			limit = parsedLimit
+	// Extract user information
+	userID := request.Headers["x-user-id"]
+	if userID == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusUnauthorized,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "User ID required"}`,
+		}, nil
+	}
+
+	log.Printf("🗂️ Getting conversations for bot: %s, user: %s", botID, userID)
+
+	// Verify user has access to this bot
+	userGroups := []string{} // TODO: Extract from authentication context
+	isAdmin := false
+	_, err := h.botService.GetBot(ctx, botID, userID, userGroups, isAdmin)
+	if err != nil {
+		if isNotFoundError(err) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusNotFound,
+				Headers:    corsHeaders(),
+				Body:       fmt.Sprintf(`{"error": "Bot not found: %s"}`, botID),
+			}, nil
+		}
+		if isAccessDeniedError(err) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusForbidden,
+				Headers:    corsHeaders(),
+				Body:       `{"error": "Access denied to bot"}`,
+			}, nil
+		}
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Headers:    corsHeaders(),
+			Body:       fmt.Sprintf(`{"error": "Failed to verify bot access: %s"}`, err.Error()),
+		}, nil
+	}
+
+	// Get conversation metadata for this bot-user combination
+	conversations, err := h.conversationRepo.GetConversationsByBotAndUser(ctx, botID, userID)
+	if err != nil {
+		log.Printf("❌ Failed to get conversations: %v", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Headers:    corsHeaders(),
+			Body:       fmt.Sprintf(`{"error": "Failed to load conversations: %s"}`, err.Error()),
+		}, nil
+	}
+
+	// Convert to metadata format for efficient listing
+	conversationMetas := make([]models.ConversationMeta, len(conversations))
+	for i, conv := range conversations {
+		// Get last message preview
+		lastMessage := ""
+		if len(conv.MessageMap) > 0 && conv.LastMessageID != "" {
+			if msg, exists := conv.MessageMap[conv.LastMessageID]; exists && len(msg.Content) > 0 {
+				if msg.Content[0].Text != "" {
+					lastMessage = msg.Content[0].Text
+					if len(lastMessage) > 100 {
+						lastMessage = lastMessage[:100] + "..."
+					}
+				}
+			}
+		}
+
+		conversationMetas[i] = models.ConversationMeta{
+			ID:             conv.ID,
+			UserID:         conv.UserID,
+			BotID:          conv.BotID,
+			Title:          conv.Title,
+			SessionModelID: conv.SessionModelID,
+			CreatedAt:      conv.CreatedAt,
+			UpdatedAt:      conv.UpdatedAt,
+			MessageCount:   len(conv.MessageMap),
+			LastMessage:    lastMessage,
 		}
 	}
 
-	// Call the service to list conversations
-	response, err := h.service.ListConversations(ctx, userID, limit, nextToken)
-	if err != nil {
-		return utils.ErrorResponse(err, http.StatusInternalServerError), nil
+	response := map[string]interface{}{
+		"conversations": conversationMetas,
+		"count":         len(conversationMetas),
 	}
 
-	// Add request ID to the response
-	response.RequestID = request.RequestContext.RequestID
+	responseBody, err := json.Marshal(response)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Failed to prepare response"}`,
+		}, nil
+	}
 
-	// Return the successful response
-	return utils.SuccessResponse(response), nil
+	log.Printf("✅ Returned %d conversations for bot %s", len(conversationMetas), botID)
+
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Headers:    corsHeaders(),
+		Body:       string(responseBody),
+	}, nil
 }
 
-// HandleGetConversation handles requests to get a specific conversation
-func (h *ChatHandler) HandleGetConversation(ctx context.Context, request events.APIGatewayProxyRequest, userID string) (events.APIGatewayProxyResponse, error) {
-	// Extract the conversation ID from the path parameters
-	id := request.PathParameters["id"]
-	if id == "" {
-		return utils.ErrorResponse(
-			errors.New("missing conversation ID"),
-			http.StatusBadRequest,
-		), nil
+// HandleStartBotConversation handles POST /bots/{id}/conversations
+func (h *ChatHandler) HandleStartBotConversation(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	botID := request.PathParameters["id"]
+	if botID == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Bot ID is required"}`,
+		}, nil
 	}
 
-	// Call the service to get the conversation
-	conversation, err := h.service.GetConversation(ctx, id, userID)
-	if err != nil {
-		if err == models.ErrNotAuthorized {
-			return utils.ErrorResponse(err, http.StatusForbidden), nil
+	// Extract user information
+	userID := request.Headers["x-user-id"]
+	if userID == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusUnauthorized,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "User ID required"}`,
+		}, nil
+	}
+
+	log.Printf("🆕 Starting new conversation for bot: %s, user: %s", botID, userID)
+
+	// Parse request body for conversation options
+	type CreateConversationRequest struct {
+		Title          string  `json:"title,omitempty"`
+		SessionModelID *string `json:"sessionModelId,omitempty"`
+	}
+	
+	var createReq CreateConversationRequest
+	if request.Body != "" {
+		if err := json.Unmarshal([]byte(request.Body), &createReq); err != nil {
+			// Non-fatal error, just use default title
+			log.Printf("Warning: failed to parse create conversation request: %v", err)
 		}
-		return utils.ErrorResponse(err, http.StatusInternalServerError), nil
 	}
 
-	// Return the successful response
-	return utils.SuccessResponse(conversation), nil
+	// Verify user has access to this bot
+	userGroups := []string{} // TODO: Extract from authentication context
+	isAdmin := false
+	bot, err := h.botService.GetBot(ctx, botID, userID, userGroups, isAdmin)
+	if err != nil {
+		if isNotFoundError(err) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusNotFound,
+				Headers:    corsHeaders(),
+				Body:       fmt.Sprintf(`{"error": "Bot not found: %s"}`, botID),
+			}, nil
+		}
+		if isAccessDeniedError(err) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusForbidden,
+				Headers:    corsHeaders(),
+				Body:       `{"error": "Access denied to bot"}`,
+			}, nil
+		}
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Headers:    corsHeaders(),
+			Body:       fmt.Sprintf(`{"error": "Failed to verify bot access: %s"}`, err.Error()),
+		}, nil
+	}
+
+	// Generate conversation title if not provided
+	title := createReq.Title
+	if title == "" {
+		title = fmt.Sprintf("New conversation with %s", bot.Title)
+	}
+
+	// Create conversation using repository
+	conversation, err := h.conversationRepo.CreateConversationWithDetails(ctx, userID, &botID, title, createReq.SessionModelID)
+	if err != nil {
+		log.Printf("❌ Failed to create conversation: %v", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Headers:    corsHeaders(),
+			Body:       fmt.Sprintf(`{"error": "Failed to create conversation: %s"}`, err.Error()),
+		}, nil
+	}
+
+	response := map[string]interface{}{
+		"conversationId": conversation.ID,
+		"botId":          botID,
+		"title":          conversation.Title,
+		"createdAt":      conversation.CreatedAt,
+	}
+
+	responseBody, err := json.Marshal(response)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Failed to prepare response"}`,
+		}, nil
+	}
+
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusCreated,
+		Headers:    corsHeaders(),
+		Body:       string(responseBody),
+	}, nil
 }
 
-// HandleDeleteConversation handles requests to delete a conversation
-func (h *ChatHandler) HandleDeleteConversation(ctx context.Context, request events.APIGatewayProxyRequest, userID string) (events.APIGatewayProxyResponse, error) {
-	// Extract the conversation ID from the path parameters
-	id := request.PathParameters["id"]
-	if id == "" {
-		return utils.ErrorResponse(
-			errors.New("missing conversation ID"),
-			http.StatusBadRequest,
-		), nil
+// HandleGetBotConversation handles GET /bots/{id}/conversations/{conversationId}
+func (h *ChatHandler) HandleGetBotConversation(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	botID := request.PathParameters["id"]
+	conversationID := request.PathParameters["conversationId"]
+	
+	if botID == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Bot ID is required"}`,
+		}, nil
+	}
+	
+	if conversationID == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Conversation ID is required"}`,
+		}, nil
 	}
 
-	// Call the service to delete the conversation
-	err := h.service.DeleteConversation(ctx, id, userID)
+	// Extract user information
+	userID := request.Headers["x-user-id"]
+	if userID == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusUnauthorized,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "User ID required"}`,
+		}, nil
+	}
+
+	log.Printf("📖 Getting conversation: %s for bot: %s, user: %s", conversationID, botID, userID)
+
+	// Verify user has access to this bot
+	userGroups := []string{} // TODO: Extract from authentication context
+	isAdmin := false
+	_, err := h.botService.GetBot(ctx, botID, userID, userGroups, isAdmin)
 	if err != nil {
-		if err == models.ErrNotAuthorized {
-			return utils.ErrorResponse(err, http.StatusForbidden), nil
+		if isNotFoundError(err) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusNotFound,
+				Headers:    corsHeaders(),
+				Body:       fmt.Sprintf(`{"error": "Bot not found: %s"}`, botID),
+			}, nil
 		}
-		return utils.ErrorResponse(err, http.StatusInternalServerError), nil
+		if isAccessDeniedError(err) {
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusForbidden,
+				Headers:    corsHeaders(),
+				Body:       `{"error": "Access denied to bot"}`,
+			}, nil
+		}
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Headers:    corsHeaders(),
+			Body:       fmt.Sprintf(`{"error": "Failed to verify bot access: %s"}`, err.Error()),
+		}, nil
 	}
 
-	// Return a success response with no content
-	return utils.NoContentResponse(), nil
+	// Get the conversation with full message history
+	conversation, err := h.conversationRepo.GetConversation(ctx, conversationID, userID)
+	if err != nil {
+		log.Printf("❌ Failed to get conversation: %v", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusNotFound,
+			Headers:    corsHeaders(),
+			Body:       fmt.Sprintf(`{"error": "Conversation not found: %s"}`, conversationID),
+		}, nil
+	}
+
+	// Verify conversation belongs to this user and bot
+	if conversation.UserID != userID {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusForbidden,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Access denied to conversation"}`,
+		}, nil
+	}
+
+	if conversation.BotID == nil || *conversation.BotID != botID {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Conversation does not belong to this bot"}`,
+		}, nil
+	}
+
+	// Convert message map to ordered slice
+	messages := make([]*models.Message, 0, len(conversation.MessageMap))
+	for _, msg := range conversation.MessageMap {
+		messages = append(messages, msg)
+	}
+
+	// Sort messages by creation time
+	for i := 0; i < len(messages)-1; i++ {
+		for j := i + 1; j < len(messages); j++ {
+			if messages[i].CreatedAt.After(messages[j].CreatedAt) {
+				messages[i], messages[j] = messages[j], messages[i]
+			}
+		}
+	}
+
+	response := map[string]interface{}{
+		"conversation": conversation,
+		"messages":     messages,
+	}
+
+	responseBody, err := json.Marshal(response)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Failed to prepare response"}`,
+		}, nil
+	}
+
+	log.Printf("✅ Returned conversation %s with %d messages", conversationID, len(messages))
+
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Headers:    corsHeaders(),
+		Body:       string(responseBody),
+	}, nil
+}
+
+// HandleChatRequest routes different chat-related requests
+func (h *ChatHandler) HandleChatRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	log.Printf("🔀 Routing chat request: %s %s", request.HTTPMethod, request.Path)
+	
+	switch {
+	case request.HTTPMethod == "POST" && matches(request.Path, "/bots/{id}/chat"):
+		return h.HandleBotChat(ctx, request)
+		
+	case request.HTTPMethod == "GET" && matches(request.Path, "/bots/{id}/conversations/{conversationId}"):
+		return h.HandleGetBotConversation(ctx, request)
+		
+	case request.HTTPMethod == "GET" && matches(request.Path, "/bots/{id}/conversations"):
+		return h.HandleGetBotConversations(ctx, request)
+		
+	case request.HTTPMethod == "POST" && matches(request.Path, "/bots/{id}/conversations"):
+		return h.HandleStartBotConversation(ctx, request)
+		
+	case request.HTTPMethod == "OPTIONS":
+		// Handle CORS preflight
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusOK,
+			Headers: map[string]string{
+				"Access-Control-Allow-Origin":  "*",
+				"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+				"Access-Control-Allow-Headers": "Content-Type, Authorization",
+			},
+		}, nil
+		
+	default:
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusNotFound,
+			Headers:    corsHeaders(),
+			Body:       fmt.Sprintf(`{"error": "Chat endpoint not found: %s %s"}`, request.HTTPMethod, request.Path),
+		}, nil
+	}
+}
+
+// matches checks if a path matches a pattern (simple implementation)
+func matches(path, pattern string) bool {
+	// This is a simple implementation - would use a proper router in production
+	if pattern == "/bots/{id}/chat" {
+		return len(path) > 6 && path[:6] == "/bots/" && 
+			   len(path) > 10 && path[len(path)-5:] == "/chat"
+	}
+	if pattern == "/bots/{id}/conversations/{conversationId}" {
+		// Path should be: /bots/{botId}/conversations/{conversationId}
+		if len(path) < 20 || path[:6] != "/bots/" {
+			return false
+		}
+		// Find the "/conversations/" part
+		conversationsIndex := strings.Index(path, "/conversations/")
+		if conversationsIndex == -1 {
+			return false
+		}
+		// Check if there's something after "/conversations/"
+		return len(path) > conversationsIndex+15
+	}
+	if pattern == "/bots/{id}/conversations" {
+		return len(path) > 6 && path[:6] == "/bots/" && 
+			   len(path) > 14 && path[len(path)-14:] == "/conversations"
+	}
+	return false
 }

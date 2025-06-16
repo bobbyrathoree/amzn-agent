@@ -55,6 +55,7 @@ const apiStack = new ApiStack(app, `${config.prefix}ApiStack`, {
   botsTable: storageStack.botsTable,
   conversationsTable: storageStack.conversationsTable,
   messagesTable: storageStack.messagesTable,
+  storageBucket: storageStack.storageBucket,
 });
 
 // Add explicit dependencies

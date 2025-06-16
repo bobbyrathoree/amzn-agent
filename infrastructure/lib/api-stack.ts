@@ -7,6 +7,7 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as path from 'path';
 import { Construct } from 'constructs';
@@ -21,6 +22,7 @@ export interface ApiStackProps extends cdk.StackProps {
   botsTable: dynamodb.Table;
   conversationsTable: dynamodb.Table;
   messagesTable: dynamodb.Table;
+  storageBucket: s3.Bucket;
 }
 
 export class ApiStack extends cdk.Stack {
@@ -82,6 +84,192 @@ export class ApiStack extends cdk.Stack {
     props.conversationsTable.grantReadWriteData(lambdaRole);
     props.messagesTable.grantReadWriteData(lambdaRole);
     
+    // Grant comprehensive DynamoDB permissions for all service operations
+    lambdaRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:ListTables',
+        'dynamodb:DescribeTable',
+        'dynamodb:CreateTable',
+        'dynamodb:UpdateTable',
+        'dynamodb:DeleteTable',
+        'dynamodb:DescribeTimeToLive',
+        'dynamodb:UpdateTimeToLive',
+        'dynamodb:DescribeContinuousBackups',
+        'dynamodb:UpdateContinuousBackups',
+        'dynamodb:DescribeBackup',
+        'dynamodb:CreateBackup',
+        'dynamodb:DeleteBackup',
+        'dynamodb:RestoreTableFromBackup',
+        'dynamodb:RestoreTableToPointInTime',
+        'dynamodb:TagResource',
+        'dynamodb:UntagResource',
+        'dynamodb:ListTagsOfResource',
+      ],
+      resources: ['*'], // Management operations require wildcard
+    }));
+    
+    // Grant comprehensive item-level DynamoDB permissions
+    lambdaRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:PutItem',
+        'dynamodb:GetItem',
+        'dynamodb:UpdateItem',
+        'dynamodb:DeleteItem',
+        'dynamodb:BatchGetItem',
+        'dynamodb:BatchWriteItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+        'dynamodb:ConditionCheckItem',
+        'dynamodb:TransactGetItems',
+        'dynamodb:TransactWriteItems',
+      ],
+      resources: [
+        props.botsTable.tableArn,
+        `${props.botsTable.tableArn}/*`,
+        props.conversationsTable.tableArn,
+        `${props.conversationsTable.tableArn}/*`,
+        props.messagesTable.tableArn,
+        `${props.messagesTable.tableArn}/*`,
+      ],
+    }));
+    
+    // Grant comprehensive S3 permissions
+    props.storageBucket.grantReadWrite(lambdaRole);
+    lambdaRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        's3:ListAllMyBuckets',
+        's3:GetBucketLocation',
+        's3:GetBucketVersioning',
+        's3:GetBucketPolicy',
+        's3:GetBucketAcl',
+        's3:ListBucket',
+      ],
+      resources: ['*'], // Bucket listing operations
+    }));
+    
+    // Create VPC endpoints for all AWS services our backend uses
+    
+    // Gateway VPC Endpoints (free)
+    const gatewayEndpoints = [
+      { name: 'DynamoDB', service: ec2.GatewayVpcEndpointAwsService.DYNAMODB },
+      { name: 'S3', service: ec2.GatewayVpcEndpointAwsService.S3 },
+    ];
+    
+    gatewayEndpoints.forEach(endpoint => {
+      new ec2.GatewayVpcEndpoint(this, `${endpoint.name}Endpoint`, {
+        vpc: props.vpc,
+        service: endpoint.service,
+        // Gateway endpoints automatically route through route tables, no subnet specification needed
+      });
+    });
+    
+    // Interface VPC Endpoints (paid) - Add more comprehensive coverage
+    const interfaceEndpoints = [
+      { name: 'Bedrock', service: ec2.InterfaceVpcEndpointAwsService.BEDROCK_RUNTIME },
+      { name: 'BedrockAgent', service: ec2.InterfaceVpcEndpointAwsService.BEDROCK_AGENT },
+      { name: 'BedrockAgentRuntime', service: ec2.InterfaceVpcEndpointAwsService.BEDROCK_AGENT_RUNTIME },
+      { name: 'CloudFormation', service: ec2.InterfaceVpcEndpointAwsService.CLOUDFORMATION },
+      { name: 'SecretsManager', service: ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER },
+      { name: 'CloudWatchLogs', service: ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS },
+      { name: 'Lambda', service: ec2.InterfaceVpcEndpointAwsService.LAMBDA },
+      { name: 'IAM', service: ec2.InterfaceVpcEndpointAwsService.IAM },
+      { name: 'STS', service: ec2.InterfaceVpcEndpointAwsService.STS },
+    ];
+    
+    interfaceEndpoints.forEach(endpoint => {
+      new ec2.InterfaceVpcEndpoint(this, `${endpoint.name}Endpoint`, {
+        vpc: props.vpc,
+        service: endpoint.service,
+        subnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        securityGroups: [props.lambdaSecurityGroup],
+        privateDnsEnabled: true, // Critical for DNS resolution
+        // No explicit policy - will use default VPC endpoint policy
+      });
+    });
+    
+    // Grant CloudFormation permissions for Knowledge Base stack deployments
+    lambdaRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'cloudformation:CreateStack',
+        'cloudformation:DescribeStacks',
+        'cloudformation:UpdateStack',
+        'cloudformation:DeleteStack',
+        'cloudformation:ListStackResources',
+        'cloudformation:DescribeStackEvents',
+        'cloudformation:GetTemplate',
+      ],
+      resources: [
+        `arn:aws:cloudformation:${this.region}:${this.account}:stack/BrChatKbStack*/*`,
+        `arn:aws:cloudformation:${this.region}:${this.account}:stack/${props.config.prefix}*/*`,
+      ],
+    }));
+
+    // Grant comprehensive CloudFormation permissions
+    lambdaRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'cloudformation:ListStacks',
+        'cloudformation:DescribeStacks',
+        'cloudformation:DescribeStackEvents',
+        'cloudformation:DescribeStackResources',
+        'cloudformation:DescribeStackResource',
+        'cloudformation:GetTemplate',
+        'cloudformation:ListStackResources',
+        'cloudformation:ValidateTemplate',
+      ],
+      resources: ['*'], // Stack listing and describe operations require wildcard
+    }));
+    
+    // Grant comprehensive IAM permissions for service operations
+    lambdaRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'iam:GetRole',
+        'iam:GetRolePolicy',
+        'iam:ListRolePolicies',
+        'iam:ListAttachedRolePolicies',
+        'iam:GetUser',
+        'iam:GetGroup',
+        'iam:ListUsers',
+        'iam:ListGroups',
+        'sts:GetCallerIdentity',
+        'sts:AssumeRole',
+      ],
+      resources: ['*'],
+    }));
+    
+    // Grant Secrets Manager permissions for database config
+    lambdaRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'secretsmanager:GetSecretValue',
+      ],
+      resources: [
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:*`,
+      ],
+    }));
+    
+    // Grant specific Bedrock Knowledge Base permissions
+    lambdaRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'bedrock:ListKnowledgeBases',
+        'bedrock:GetKnowledgeBase',
+        'bedrock:ListDataSources',
+        'bedrock:GetDataSource',
+        'bedrock:RetrieveAndGenerate',
+        'bedrock:Retrieve',
+      ],
+      resources: [
+        `arn:aws:bedrock:${this.region}:${this.account}:knowledge-base/*`,
+        `arn:aws:bedrock:${this.region}:${this.account}:data-source/*`,
+      ],
+    }));
+    
     // Create Lambda functions
     const chatLambda = this.createLambdaFunction('ChatFunction', 'chat', props, lambdaRole);
     const botsLambda = this.createLambdaFunction('BotsFunction', 'bots', props, lambdaRole);
@@ -95,6 +283,30 @@ export class ApiStack extends cdk.Stack {
     // Individual bot API
     const botResource = botsResource.addResource('{id}');
     this.addCrudEndpoints(botResource, botsLambda, authorizer, ['GET', 'PUT', 'DELETE']);
+    
+    // Bot chat endpoints
+    const botChatResource = botResource.addResource('chat');
+    botChatResource.addMethod('POST', new apigateway.LambdaIntegration(botsLambda), {
+      authorizer,
+    });
+    
+    // Bot conversations endpoints (bots lambda routes internally to chat handler)
+    const botConversationsResource = botResource.addResource('conversations');
+    botConversationsResource.addMethod('GET', new apigateway.LambdaIntegration(botsLambda), {
+      authorizer,
+    });
+    botConversationsResource.addMethod('POST', new apigateway.LambdaIntegration(botsLambda), {
+      authorizer,
+    });
+    
+    // Individual bot conversation endpoint
+    const botConversationResource = botConversationsResource.addResource('{conversationId}');
+    botConversationResource.addMethod('GET', new apigateway.LambdaIntegration(botsLambda), {
+      authorizer,
+    });
+    botConversationResource.addMethod('DELETE', new apigateway.LambdaIntegration(botsLambda), {
+      authorizer,
+    });
     
     // Chat API
     const chatResource = this.apiGateway.root.addResource('chat');
@@ -116,9 +328,21 @@ export class ApiStack extends cdk.Stack {
       authorizer,
     });
     
-    // Knowledge bases API
+    // Knowledge bases API (routed to bots Lambda which handles KB endpoints)
     const knowledgeResource = this.apiGateway.root.addResource('knowledge-bases');
-    knowledgeResource.addMethod('GET', new apigateway.LambdaIntegration(knowledgeLambda), {
+    knowledgeResource.addMethod('GET', new apigateway.LambdaIntegration(botsLambda), {
+      authorizer,
+    });
+    
+    // Knowledge base specific endpoints
+    const knowledgeIdResource = knowledgeResource.addResource('{id}');
+    knowledgeIdResource.addMethod('GET', new apigateway.LambdaIntegration(botsLambda), {
+      authorizer,
+    });
+    
+    // Knowledge base validation endpoint
+    const knowledgeValidateResource = knowledgeResource.addResource('validate');
+    knowledgeValidateResource.addMethod('POST', new apigateway.LambdaIntegration(botsLambda), {
       authorizer,
     });
     
@@ -178,8 +402,9 @@ export class ApiStack extends cdk.Stack {
       BOTS_TABLE: props.botsTable.tableName,
       CONVERSATIONS_TABLE: props.conversationsTable.tableName,
       MESSAGES_TABLE: props.messagesTable.tableName,
+      DOCUMENTS_BUCKET: props.storageBucket.bucketName,
       USER_POOL_ID: props.userPool.userPoolId,
-      REGION: props.env?.region || 'us-east-1',
+      // AWS_REGION is automatically provided by Lambda runtime
     };
     
     // Path to the actual Go Lambda binary

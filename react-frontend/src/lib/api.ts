@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+
 export class ApiClient {
   private getAccessToken: () => Promise<string | null>;
   private getUserId: () => string;
@@ -27,7 +29,9 @@ export class ApiClient {
 
   async get(path: string): Promise<Response> {
     const headers = await this.getHeaders();
-    return fetch(this.getUrl(path), {
+    const url = this.getUrl(path);
+    console.log('GET request to:', url);
+    return fetch(url, {
       method: 'GET',
       headers,
     });
@@ -35,7 +39,9 @@ export class ApiClient {
 
   async post(path: string, body?: any): Promise<Response> {
     const headers = await this.getHeaders();
-    return fetch(this.getUrl(path), {
+    const url = this.getUrl(path);
+    console.log('POST request to:', url, 'Body:', body);
+    return fetch(url, {
       method: 'POST',
       headers,
       body: body ? JSON.stringify(body) : undefined,
@@ -67,16 +73,30 @@ export class ApiClient {
       body: body ? JSON.stringify(body) : undefined,
     });
   }
+
+  // Helper method for file uploads (without JSON Content-Type)
+  async upload(url: string, file: File, contentType: string): Promise<Response> {
+    return fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': contentType,
+      },
+      body: file,
+    });
+  }
 }
 
 // Hook to get API client instance
+
 export function useApiClient(
   getAccessToken: () => Promise<string | null>,
   getUserId: () => string | null
 ): ApiClient | null {
-  if (!getUserId()) {
-    return null;
-  }
-  
-  return new ApiClient(getAccessToken, () => getUserId() || 'unknown');
+  return useMemo(() => {
+    if (!getUserId()) {
+      return null;
+    }
+    
+    return new ApiClient(getAccessToken, () => getUserId() || 'unknown');
+  }, [getAccessToken, getUserId]);
 }
