@@ -162,6 +162,11 @@ export function ChatPage() {
 
     try {
       setIsLoading(true);
+      // Clear messages immediately when starting to load a new conversation
+      setMessagesDebug([]);
+      setCurrentConversation(null);
+      setError(null);
+      
       const response = await apiClient.get(`bots/${botId}/conversations/${conversationId}`);
       
       if (!response.ok) {
@@ -248,6 +253,74 @@ export function ChatPage() {
     }
   };
 
+  const deleteConversation = async (conversationId: string) => {
+    if (!apiClient || !botId) return;
+
+    try {
+      setIsLoading(true);
+      const response = await apiClient.delete(`bots/${botId}/conversations/${conversationId}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Delete conversation failed:', response.status, errorText);
+        throw new Error(`Failed to delete conversation: ${response.status} - ${errorText}`);
+      }
+
+      console.log('Conversation deleted:', conversationId);
+      
+      // If we're deleting the current conversation, clear the state
+      if (selectedConversationId === conversationId) {
+        setCurrentConversation(null);
+        setMessages([]);
+        setSelectedConversationId(null);
+      }
+      
+      // Reload conversations list
+      await loadConversations();
+      
+    } catch (err) {
+      console.error('Error deleting conversation:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete conversation');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Create conversation for chat without interfering with loading state
+  const startNewConversationForChat = async (): Promise<string | null> => {
+    if (!apiClient || !botId) return null;
+
+    try {
+      console.log('Creating new conversation for chat with session model:', sessionModel);
+      
+      const response = await apiClient.post(`bots/${botId}/conversations`, {
+        title: `New conversation with ${bot?.title || 'Bot'}`,
+        sessionModelId: sessionModel || undefined
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Create conversation failed:', response.status, errorText);
+        throw new Error(`Failed to create conversation: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      const newConversationId = data.conversationId;
+      console.log('New conversation created for chat:', newConversationId);
+      
+      // Update selected conversation ID and load conversation state 
+      setSelectedConversationId(newConversationId);
+      
+      // Reload conversations list in background
+      loadConversations(); // Don't await to keep chat flowing
+      
+      return newConversationId;
+    } catch (err) {
+      console.error('Error creating conversation for chat:', err);
+      throw err; // Re-throw to be handled by sendMessage
+    }
+  };
+
   const handleNewConversationClick = () => {
     // Show model selection dialog for new conversations
     setShowNewChatDialog(true);
@@ -308,6 +381,9 @@ export function ChatPage() {
     setCurrentSearchStages([]);
     setLastChatResponse(null);
 
+    // Set loading state FIRST to show thinking animations
+    setIsLoading(true);
+
     // Optimistic UI update - show user message immediately
     const tempUserMessage: Message = {
       id: `temp-${Date.now()}`,
@@ -320,13 +396,12 @@ export function ChatPage() {
 
     // Add user message to UI immediately
     setMessagesDebug(prev => [...prev, tempUserMessage]);
-    setIsLoading(true);
 
     try {
-      // If no conversation selected, create one
+      // If no conversation selected, create one (but keep loading state active)
       let conversationId = selectedConversationId;
       if (!conversationId) {
-        conversationId = await startNewConversation();
+        conversationId = await startNewConversationForChat();
         if (!conversationId) {
           throw new Error('Failed to create conversation');
         }
@@ -528,26 +603,44 @@ export function ChatPage() {
             ) : (
               <div className="space-y-1 p-2">
                 {Array.isArray(conversations) && conversations.map((conv) => (
-                  <button
+                  <div
                     key={conv.id}
-                    onClick={() => loadConversation(conv.id)}
-                    className={`w-full text-left p-3 rounded-lg hover:bg-gray-50 transition-colors ${
+                    className={`group relative rounded-lg hover:bg-gray-50 transition-colors ${
                       selectedConversationId === conv.id ? 'bg-blue-50 border border-blue-200' : ''
                     }`}
                   >
-                    <div className="font-medium text-gray-900 truncate">{conv.title}</div>
-                    <div className="text-sm text-gray-500 mt-1 flex items-center justify-between">
-                      <span>{conv.messageCount} messages • {new Date(conv.updatedAt).toLocaleDateString()}</span>
-                      {conv.sessionModelId && (
-                        <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                          {availableModels.find(m => m.id === conv.sessionModelId)?.name || 'Custom'}
-                        </span>
+                    <button
+                      onClick={() => loadConversation(conv.id)}
+                      className="w-full text-left p-3 pr-10"
+                    >
+                      <div className="font-medium text-gray-900 truncate">{conv.title}</div>
+                      <div className="text-sm text-gray-500 mt-1 flex items-center justify-between">
+                        <span>{conv.messageCount} messages • {new Date(conv.updatedAt).toLocaleDateString()}</span>
+                        {conv.sessionModelId && (
+                          <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                            {availableModels.find(m => m.id === conv.sessionModelId)?.name || 'Custom'}
+                          </span>
+                        )}
+                      </div>
+                      {conv.lastMessage && (
+                        <div className="text-xs text-gray-400 mt-1 truncate">{conv.lastMessage}</div>
                       )}
-                    </div>
-                    {conv.lastMessage && (
-                      <div className="text-xs text-gray-400 mt-1 truncate">{conv.lastMessage}</div>
-                    )}
-                  </button>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm('Are you sure you want to delete this conversation?')) {
+                          deleteConversation(conv.id);
+                        }
+                      }}
+                      className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded-full transition-all"
+                      title="Delete conversation"
+                    >
+                      <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                 ))}
               </div>
             )}

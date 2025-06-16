@@ -469,6 +469,79 @@ func (h *ChatHandler) HandleGetBotConversation(ctx context.Context, request even
 	}, nil
 }
 
+// HandleDeleteBotConversation handles DELETE /bots/{id}/conversations/{conversationId}
+func (h *ChatHandler) HandleDeleteBotConversation(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	botID := request.PathParameters["id"]
+	conversationID := request.PathParameters["conversationId"]
+	
+	if botID == "" || conversationID == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Bot ID and Conversation ID are required"}`,
+		}, nil
+	}
+
+	// Extract user information
+	userID := request.Headers["x-user-id"]
+	if userID == "" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusUnauthorized,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "User ID required"}`,
+		}, nil
+	}
+
+	log.Printf("🗑️ Deleting conversation %s for bot %s by user %s", conversationID, botID, userID)
+
+	// First verify the conversation exists and belongs to this user/bot
+	conversation, err := h.conversationRepo.GetConversation(ctx, conversationID, userID)
+	if err != nil {
+		log.Printf("❌ Failed to get conversation for deletion: %v", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusNotFound,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Conversation not found"}`,
+		}, nil
+	}
+
+	// Verify conversation belongs to this user and bot
+	if conversation.UserID != userID {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusForbidden,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Access denied to conversation"}`,
+		}, nil
+	}
+
+	if conversation.BotID == nil || *conversation.BotID != botID {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Headers:    corsHeaders(),
+			Body:       `{"error": "Conversation does not belong to this bot"}`,
+		}, nil
+	}
+
+	// Delete the conversation
+	err = h.conversationRepo.DeleteConversation(ctx, conversationID, userID)
+	if err != nil {
+		log.Printf("❌ Failed to delete conversation: %v", err)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Headers:    corsHeaders(),
+			Body:       fmt.Sprintf(`{"error": "Failed to delete conversation: %s"}`, err.Error()),
+		}, nil
+	}
+
+	log.Printf("✅ Successfully deleted conversation %s", conversationID)
+
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Headers:    corsHeaders(),
+		Body:       `{"message": "Conversation deleted successfully"}`,
+	}, nil
+}
+
 // HandleChatRequest routes different chat-related requests
 func (h *ChatHandler) HandleChatRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	log.Printf("🔀 Routing chat request: %s %s", request.HTTPMethod, request.Path)
@@ -486,13 +559,16 @@ func (h *ChatHandler) HandleChatRequest(ctx context.Context, request events.APIG
 	case request.HTTPMethod == "POST" && matches(request.Path, "/bots/{id}/conversations"):
 		return h.HandleStartBotConversation(ctx, request)
 		
+	case request.HTTPMethod == "DELETE" && matches(request.Path, "/bots/{id}/conversations/{conversationId}"):
+		return h.HandleDeleteBotConversation(ctx, request)
+		
 	case request.HTTPMethod == "OPTIONS":
 		// Handle CORS preflight
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusOK,
 			Headers: map[string]string{
 				"Access-Control-Allow-Origin":  "*",
-				"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+				"Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
 				"Access-Control-Allow-Headers": "Content-Type, Authorization",
 			},
 		}, nil

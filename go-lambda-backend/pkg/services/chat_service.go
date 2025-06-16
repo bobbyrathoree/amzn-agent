@@ -257,6 +257,16 @@ func (s *ChatService) ChatWithBot(ctx context.Context, botID, userID string, use
 		return nil, fmt.Errorf("failed to save assistant message: %w", err)
 	}
 	log.Printf("💾 Saved AI response to conversation")
+	
+	// STEP 6A: Generate conversation title if this is the first user message 🚀
+	if len(conversationHistory) == 0 { // This was the first user message
+		go func() {
+			// Run title generation in background to not slow down the response
+			if err := s.generateConversationTitle(context.Background(), req.ConversationID, userID, req.Message, modelID); err != nil {
+				log.Printf("Warning: Failed to generate conversation title: %v", err)
+			}
+		}()
+	}
 
 	// Build response metadata
 	metadata := map[string]interface{}{
@@ -823,6 +833,69 @@ func (s *ChatService) calculateContentSimilarity(content1, content2 string) floa
 	return float64(commonWords) / float64(totalUniqueWords)
 }
 
+// 🚀 INGENIOUS ENHANCEMENT: Generate conversation title based on first message
+func (s *ChatService) generateConversationTitle(ctx context.Context, conversationID, userID, firstMessage, modelID string) error {
+	log.Printf("🏷️ Generating title for conversation %s based on message: %.100s", conversationID, firstMessage)
+	
+	// Create a simple prompt to generate a conversation title
+	titlePrompt := fmt.Sprintf(`Generate a short, descriptive title (2-6 words) for a conversation that starts with this message:
+
+"%s"
+
+The title should:
+- Be concise and clear
+- Capture the main topic or intent
+- Not include quotes or special characters
+- Be suitable for a conversation list
+
+Title:`, firstMessage)
+
+	// Use Haiku 3.5 v2 for fast, cost-effective title generation
+	titleModelID := "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+	titleResponse, _, err := s.callBedrock(ctx, titleModelID, "You are a helpful assistant that generates concise conversation titles.", titlePrompt, models.GenerationParams{
+		MaxTokens:     50,
+		Temperature:   0.3, // Lower temperature for more consistent titles
+		TopP:          0.8,
+		TopK:          40,
+		StopSequences: []string{"\n", ".", "!", "?"},
+	}, nil, false)
+	
+	if err != nil {
+		return fmt.Errorf("failed to generate title: %w", err)
+	}
+	
+	// Clean up the title
+	title := strings.TrimSpace(titleResponse)
+	title = strings.Trim(title, "\"'")
+	
+	// Truncate if too long
+	if len(title) > 50 {
+		title = title[:47] + "..."
+	}
+	
+	// Validate title is reasonable
+	if title == "" || len(title) < 3 {
+		title = "New Conversation"
+	}
+	
+	log.Printf("✨ Generated title: '%s' for conversation %s", title, conversationID)
+	
+	// Get the conversation and update its title
+	conversation, err := s.conversationRepo.GetConversation(ctx, conversationID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get conversation for title update: %w", err)
+	}
+	
+	conversation.Title = title
+	conversation.UpdatedAt = time.Now()
+	
+	if err := s.conversationRepo.UpdateConversation(ctx, conversation); err != nil {
+		return fmt.Errorf("failed to update conversation title: %w", err)
+	}
+	
+	log.Printf("✅ Updated conversation %s title to: '%s'", conversationID, title)
+	return nil
+}
 
 // shouldUseTool determines if any tools should be executed based on the message
 func (s *ChatService) shouldUseTool(message string, tools []models.AgentTool) bool {
