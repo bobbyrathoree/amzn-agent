@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
-import { useApiClient } from '../lib/api';
+import { useApiClient, ApiClient } from '../lib/api';
 import { KnowledgeSearchStages } from '../components/KnowledgeSearchStages';
 import { SourceCitations } from '../components/SourceCitations';
 import { ExtendedThinkingToggle } from '../components/ExtendedThinkingToggle';
@@ -175,7 +175,7 @@ export function ChatPage() {
       }
     } catch (err) {
       console.error('Error loading bot:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load bot');
+      setError(ApiClient.getErrorMessage(err));
     }
   }, [apiClient, botId]);
 
@@ -265,7 +265,7 @@ export function ChatPage() {
       }
     } catch (err) {
       console.error('Error loading conversation:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load conversation');
+      setError(ApiClient.getErrorMessage(err));
       // Reset to safe state on error to prevent null.map() errors
       setMessages([]);
       setCurrentConversation(null);
@@ -311,7 +311,7 @@ export function ChatPage() {
       return newConversationId;
     } catch (err) {
       console.error('Error creating conversation:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create conversation');
+      setError(ApiClient.getErrorMessage(err));
       return null;
     } finally {
       setIsLoading(false);
@@ -345,7 +345,7 @@ export function ChatPage() {
       
     } catch (err) {
       console.error('Error deleting conversation:', err);
-      setError(err instanceof Error ? err.message : 'Failed to delete conversation');
+      setError(ApiClient.getErrorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -520,7 +520,7 @@ export function ChatPage() {
 
     } catch (err) {
       console.error('Error sending message:', err);
-      setError(err instanceof Error ? err.message : 'Failed to send message');
+      setError(ApiClient.getErrorMessage(err));
       
       // Remove the optimistic message on error
       setMessagesDebug(prev => prev.filter(msg => msg.id !== tempUserMessage.id));
