@@ -22,7 +22,15 @@ export interface MessageContent {
   imageUrl?: string;
   toolUse?: ToolUseContent;
   toolResult?: ToolResultContent;
+  reasoningContent?: ReasoningContent;
   metadata?: Record<string, any>;
+}
+
+export interface ReasoningContent {
+  contentType: 'reasoning';
+  text: string;
+  signature: string;
+  redactedContent: string;
 }
 
 export interface ToolUseContent {
@@ -99,6 +107,8 @@ export interface ChatRequest {
   stream?: boolean;
   context?: Record<string, string>;
   sessionModelId?: string; // Override model for this session
+  enableReasoning?: boolean;
+  reasoningParams?: ReasoningParams;
 }
 
 export interface KnowledgeBaseChunk {
@@ -193,6 +203,11 @@ export interface GenerationParams {
   topP: number;
   topK: number;
   stopSequences: string[];
+  reasoningParams?: ReasoningParams;
+}
+
+export interface ReasoningParams {
+  budgetTokens: number;
 }
 
 export interface KnowledgeBaseConfig {

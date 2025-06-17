@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider, useAuth } from './components/AuthProvider';
+import { ThemeProvider } from './components/ThemeProvider';
 import { LoginModal } from './components/LoginModal';
 import { HomePage } from './pages/HomePage';
 import { ChatPage } from './pages/ChatPage';
@@ -46,9 +47,11 @@ function AppContent() {
   }
 
   return (
-    <AuthProvider config={config}>
-      <AppWithAuth />
-    </AuthProvider>
+    <ThemeProvider defaultTheme="system" storageKey="chat-app-theme">
+      <AuthProvider config={config}>
+        <AppWithAuth />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
@@ -86,9 +89,11 @@ function AppWithAuth() {
 
 function App() {
   return (
-    <Router>
-      <AppContent />
-    </Router>
+    <ThemeProvider defaultTheme="system" storageKey="chat-app-theme">
+      <Router>
+        <AppContent />
+      </Router>
+    </ThemeProvider>
   );
 }
 

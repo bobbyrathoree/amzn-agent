@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
+import { ThemeToggle } from '../components/ThemeToggle';
 import { useApiClient } from '../lib/api';
 import type { BotSummary } from '../types';
 
@@ -74,9 +75,9 @@ export function BotsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="bg-white shadow-sm">
+      <header className="bg-card shadow-sm border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
@@ -89,16 +90,11 @@ export function BotsPage() {
             <div>
               {user && (
                 <div className="flex items-center space-x-4">
-                  <span className="text-sm text-gray-700">Welcome, {user.username}</span>
-                  <Link
-                    to="/chat"
-                    className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
-                  >
-                    Go to Chat
-                  </Link>
+                  <span className="text-sm text-muted-foreground">Welcome, {user.username}</span>
+                  <ThemeToggle />
                   <button
                     onClick={signOut}
-                    className="bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-700 transition-colors"
+                    className="bg-secondary text-secondary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
                   >
                     Sign Out
                   </button>
@@ -112,7 +108,7 @@ export function BotsPage() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">My Bots</h1>
+          <h1 className="text-2xl font-bold text-foreground">My Bots</h1>
           <Link
             to="/bots/create"
             className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
@@ -157,7 +153,7 @@ export function BotsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {bots.map((bot) => (
-              <div key={bot.id} className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+              <div key={bot.id} className="bg-card rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow border border-border">
                 <div className="flex items-start justify-between mb-2">
                   <h3 className="text-lg font-medium text-gray-900">{bot.title}</h3>
                   {bot.ownerUserId === (user?.userId || user?.username) ? (
@@ -178,7 +174,7 @@ export function BotsPage() {
                     to={`/bots/${bot.id}/chat`}
                     className="flex-1 bg-blue-600 text-white px-3 py-2 rounded text-sm text-center hover:bg-blue-700 transition-colors"
                   >
-                    Chat
+                    Open Chat
                   </Link>
                   {/* Only show Edit button if user owns the bot */}
                   {bot.ownerUserId === (user?.userId || user?.username) && (

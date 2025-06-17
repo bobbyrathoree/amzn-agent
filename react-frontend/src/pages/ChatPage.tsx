@@ -4,6 +4,10 @@ import { useAuth } from '../components/AuthProvider';
 import { useApiClient } from '../lib/api';
 import { KnowledgeSearchStages } from '../components/KnowledgeSearchStages';
 import { SourceCitations } from '../components/SourceCitations';
+import { ExtendedThinkingToggle } from '../components/ExtendedThinkingToggle';
+import { BotSelector } from '../components/BotSelector';
+import { Breadcrumbs } from '../components/Breadcrumbs';
+import { ThemeToggle } from '../components/ThemeToggle';
 import type { 
   Bot, 
   Conversation, 
@@ -12,7 +16,9 @@ import type {
   ChatRequest, 
   MessageContent,
   ChatResponse,
-  KnowledgeSearchStage 
+  KnowledgeSearchStage,
+  ReasoningParams,
+  KnowledgeBaseChunk
 } from '../types';
 
 export function ChatPage() {
@@ -23,8 +29,9 @@ export function ChatPage() {
   
   // State management
   const [bot, setBot] = useState<Bot | null>(null);
+  const [allBots, setAllBots] = useState<Bot[]>([]);
   const [conversations, setConversations] = useState<ConversationMeta[]>([]);
-  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
+  const [, setCurrentConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   
   // Debug wrapper for setMessages to catch null assignments
@@ -54,9 +61,7 @@ export function ChatPage() {
   
   // Session model state (not persisted to DB)
   const [sessionModel, setSessionModel] = useState<string | null>(null);
-  const [showModelChangeWarning, setShowModelChangeWarning] = useState(false);
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
-  const [pendingModelChange, setPendingModelChange] = useState<string | null>(null);
   
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -65,39 +70,46 @@ export function ChatPage() {
   // 🚀 INGENIOUS ENHANCEMENT: Knowledge search stages tracking
   const [currentSearchStages, setCurrentSearchStages] = useState<KnowledgeSearchStage[]>([]);
   const [lastChatResponse, setLastChatResponse] = useState<ChatResponse | null>(null);
+  
+  // 🚀 ENHANCEMENT: Sources persistence per conversation
+  const [conversationSources, setConversationSources] = useState<Record<string, KnowledgeBaseChunk[]>>({});
+  
+  // Extended thinking state
+  const [extendedThinkingEnabled, setExtendedThinkingEnabled] = useState(false);
+  const [reasoningParams, setReasoningParams] = useState<ReasoningParams>({ budgetTokens: 1024 });
 
-  // Available models for dropdown
+  // Available models for dropdown with extended thinking support
   const availableModels = [
-    // Claude Models (US inference profiles)
-    { id: 'us.anthropic.claude-opus-4-20250514-v1:0', name: 'Claude 4 Opus', family: 'claude' },
-    { id: 'us.anthropic.claude-sonnet-4-20250514-v1:0', name: 'Claude 4 Sonnet', family: 'claude' },
-    { id: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', name: 'Claude 3.7 Sonnet', family: 'claude' },
-    { id: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet v2', family: 'claude' },
-    { id: 'us.anthropic.claude-3-5-sonnet-20240620-v1:0', name: 'Claude 3.5 Sonnet', family: 'claude' },
-    { id: 'us.anthropic.claude-3-5-haiku-20241022-v1:0', name: 'Claude 3.5 Haiku', family: 'claude' },
-    { id: 'us.anthropic.claude-3-haiku-20240307-v1:0', name: 'Claude 3 Haiku', family: 'claude' },
-    { id: 'us.anthropic.claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', family: 'claude' },
+    // Claude Models (US inference profiles) - Extended thinking supported
+    { id: 'us.anthropic.claude-opus-4-20250514-v1:0', name: 'Claude 4 Opus', family: 'claude', supportsReasoning: true },
+    { id: 'us.anthropic.claude-sonnet-4-20250514-v1:0', name: 'Claude 4 Sonnet', family: 'claude', supportsReasoning: true },
+    { id: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0', name: 'Claude 3.7 Sonnet', family: 'claude', supportsReasoning: true },
+    { id: 'us.anthropic.claude-3-5-sonnet-20241022-v2:0', name: 'Claude 3.5 Sonnet v2', family: 'claude', supportsReasoning: false },
+    { id: 'us.anthropic.claude-3-5-sonnet-20240620-v1:0', name: 'Claude 3.5 Sonnet', family: 'claude', supportsReasoning: false },
+    { id: 'us.anthropic.claude-3-5-haiku-20241022-v1:0', name: 'Claude 3.5 Haiku', family: 'claude', supportsReasoning: false },
+    { id: 'us.anthropic.claude-3-haiku-20240307-v1:0', name: 'Claude 3 Haiku', family: 'claude', supportsReasoning: false },
+    { id: 'us.anthropic.claude-3-opus-20240229-v1:0', name: 'Claude 3 Opus', family: 'claude', supportsReasoning: false },
     
-    // Amazon Nova Models
-    { id: 'us.amazon.nova-pro-v1:0', name: 'Nova Pro', family: 'nova' },
-    { id: 'us.amazon.nova-lite-v1:0', name: 'Nova Lite', family: 'nova' },
-    { id: 'us.amazon.nova-micro-v1:0', name: 'Nova Micro', family: 'nova' },
+    // Amazon Nova Models - No extended thinking support
+    { id: 'us.amazon.nova-pro-v1:0', name: 'Nova Pro', family: 'nova', supportsReasoning: false },
+    { id: 'us.amazon.nova-lite-v1:0', name: 'Nova Lite', family: 'nova', supportsReasoning: false },
+    { id: 'us.amazon.nova-micro-v1:0', name: 'Nova Micro', family: 'nova', supportsReasoning: false },
     
-    // Mistral Models
-    { id: 'us.mistral.mistral-large-2407-v1:0', name: 'Mistral Large 2407', family: 'mistral' },
-    { id: 'us.mistral.mistral-large-2402-v1:0', name: 'Mistral Large 2402', family: 'mistral' },
-    { id: 'us.mistral.mixtral-8x7b-instruct-v0:1', name: 'Mixtral 8x7B', family: 'mistral' },
-    { id: 'us.mistral.mistral-7b-instruct-v0:2', name: 'Mistral 7B', family: 'mistral' },
+    // Mistral Models - No extended thinking support
+    { id: 'us.mistral.mistral-large-2407-v1:0', name: 'Mistral Large 2407', family: 'mistral', supportsReasoning: false },
+    { id: 'us.mistral.mistral-large-2402-v1:0', name: 'Mistral Large 2402', family: 'mistral', supportsReasoning: false },
+    { id: 'us.mistral.mixtral-8x7b-instruct-v0:1', name: 'Mixtral 8x7B', family: 'mistral', supportsReasoning: false },
+    { id: 'us.mistral.mistral-7b-instruct-v0:2', name: 'Mistral 7B', family: 'mistral', supportsReasoning: false },
     
-    // DeepSeek Models
-    { id: 'us.deepseek.r1-v1:0', name: 'DeepSeek R1', family: 'deepseek' },
+    // DeepSeek Models - Built-in reasoning, always enabled
+    { id: 'us.deepseek.r1-v1:0', name: 'DeepSeek R1', family: 'deepseek', supportsReasoning: true, forceReasoningEnabled: true },
     
-    // Meta Llama Models
-    { id: 'us.meta.llama3-3-70b-instruct-v1:0', name: 'Llama 3.3 70B', family: 'llama' },
-    { id: 'us.meta.llama3-2-90b-instruct-v1:0', name: 'Llama 3.2 90B', family: 'llama' },
-    { id: 'us.meta.llama3-2-11b-instruct-v1:0', name: 'Llama 3.2 11B', family: 'llama' },
-    { id: 'us.meta.llama3-2-3b-instruct-v1:0', name: 'Llama 3.2 3B', family: 'llama' },
-    { id: 'us.meta.llama3-2-1b-instruct-v1:0', name: 'Llama 3.2 1B', family: 'llama' }
+    // Meta Llama Models - No extended thinking support
+    { id: 'us.meta.llama3-3-70b-instruct-v1:0', name: 'Llama 3.3 70B', family: 'llama', supportsReasoning: false },
+    { id: 'us.meta.llama3-2-90b-instruct-v1:0', name: 'Llama 3.2 90B', family: 'llama', supportsReasoning: false },
+    { id: 'us.meta.llama3-2-11b-instruct-v1:0', name: 'Llama 3.2 11B', family: 'llama', supportsReasoning: false },
+    { id: 'us.meta.llama3-2-3b-instruct-v1:0', name: 'Llama 3.2 3B', family: 'llama', supportsReasoning: false },
+    { id: 'us.meta.llama3-2-1b-instruct-v1:0', name: 'Llama 3.2 1B', family: 'llama', supportsReasoning: false }
   ];
 
   // Load bot and conversations on mount
@@ -106,12 +118,36 @@ export function ChatPage() {
       loadBot();
       loadConversations();
     }
+    if (apiClient) {
+      loadAllBots();
+    }
   }, [apiClient, botId]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Update extended thinking for DeepSeek models
+  useEffect(() => {
+    const model = getCurrentModel();
+    if (model?.forceReasoningEnabled) {
+      setExtendedThinkingEnabled(true);
+    }
+  }, [sessionModel]);
+
+  const getBreadcrumbItems = () => {
+    const items: Array<{ label: string; href?: string }> = [
+      { label: 'Home', href: '/' },
+      { label: 'Bots', href: '/bots' }
+    ];
+    
+    if (bot) {
+      items.push({ label: bot.title });
+    }
+    
+    return items;
+  };
 
   const loadBot = useCallback(async () => {
     if (!apiClient || !botId) return;
@@ -143,6 +179,20 @@ export function ChatPage() {
     }
   }, [apiClient, botId]);
 
+  const loadAllBots = useCallback(async () => {
+    if (!apiClient) return;
+
+    try {
+      const response = await apiClient.get('bots');
+      if (response.ok) {
+        const data = await response.json();
+        setAllBots(data.bots || []);
+      }
+    } catch (err) {
+      console.error('Error loading all bots:', err);
+    }
+  }, [apiClient]);
+
   const loadConversations = useCallback(async () => {
     if (!apiClient || !botId) return;
 
@@ -166,6 +216,10 @@ export function ChatPage() {
       setMessagesDebug([]);
       setCurrentConversation(null);
       setError(null);
+      
+      // Clear current search stages when switching conversations
+      setCurrentSearchStages([]);
+      setLastChatResponse(null);
       
       const response = await apiClient.get(`bots/${botId}/conversations/${conversationId}`);
       
@@ -197,6 +251,17 @@ export function ChatPage() {
       } else if (bot?.activeModels && bot.activeModels.length > 0) {
         // Fall back to bot's default model if conversation has no session model
         setSessionModel(bot.activeModels[0]);
+      }
+      
+      // Restore sources for this conversation if available
+      // Note: Sources are now persisted per conversation for better UX
+      if (conversationSources[conversationId]) {
+        // Restore the last chat response with sources for this conversation
+        setLastChatResponse({ 
+          response: '', 
+          conversationId, 
+          sources: conversationSources[conversationId] 
+        });
       }
     } catch (err) {
       console.error('Error loading conversation:', err);
@@ -326,32 +391,6 @@ export function ChatPage() {
     setShowNewChatDialog(true);
   };
 
-  const handleModelChange = (newModelId: string) => {
-    if (selectedConversationId && messages.length > 0) {
-      // Warn user about switching models mid-conversation
-      setPendingModelChange(newModelId);
-      setShowModelChangeWarning(true);
-    } else {
-      // No active conversation, safe to switch
-      setSessionModel(newModelId);
-    }
-  };
-
-  const confirmModelChange = () => {
-    if (pendingModelChange) {
-      setSessionModel(pendingModelChange);
-      setPendingModelChange(null);
-      setShowModelChangeWarning(false);
-      
-      // Start a new conversation with the new model
-      startNewConversationWithModel(pendingModelChange);
-    }
-  };
-
-  const cancelModelChange = () => {
-    setPendingModelChange(null);
-    setShowModelChangeWarning(false);
-  };
 
   const startNewConversationWithModel = async (modelId: string) => {
     try {
@@ -367,6 +406,23 @@ export function ChatPage() {
     if (!sessionModel) return 'Loading...';
     const model = availableModels.find(m => m.id === sessionModel);
     return model ? model.name : sessionModel;
+  };
+  
+  const getCurrentModel = () => {
+    if (!sessionModel) return null;
+    return availableModels.find(m => m.id === sessionModel) || null;
+  };
+  
+  const currentModelSupportsReasoning = () => {
+    const model = getCurrentModel();
+    return model?.supportsReasoning ?? false;
+  };
+  
+  const handleExtendedThinkingToggle = (enabled: boolean, params?: ReasoningParams) => {
+    setExtendedThinkingEnabled(enabled);
+    if (params) {
+      setReasoningParams(params);
+    }
   };
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -411,7 +467,9 @@ export function ChatPage() {
         message: userMessage,
         conversationId: conversationId,
         stream: false,
-        sessionModelId: sessionModel || undefined
+        sessionModelId: sessionModel || undefined,
+        enableReasoning: extendedThinkingEnabled && currentModelSupportsReasoning(),
+        reasoningParams: extendedThinkingEnabled ? reasoningParams : undefined
       };
 
       const response = await apiClient.post(`bots/${botId}/chat`, chatRequest);
@@ -438,6 +496,14 @@ export function ChatPage() {
         setCurrentSearchStages(chatResponse.knowledgeSearchStages);
       }
       setLastChatResponse(chatResponse);
+      
+      // 🚀 ENHANCEMENT: Persist sources per conversation
+      if (chatResponse.sources && chatResponse.sources.length > 0 && conversationId) {
+        setConversationSources(prev => ({
+          ...prev,
+          [conversationId]: chatResponse.sources!
+        }));
+      }
       
       // Reload conversation to get the latest messages
       if (conversationId) {
@@ -516,6 +582,20 @@ export function ChatPage() {
               </div>
             </div>
           );
+        case 'reasoning':
+          return (
+            <div key={index} className="bg-purple-50 border border-purple-200 p-3 rounded-lg mt-2">
+              <div className="text-sm font-medium text-purple-800 mb-2 flex items-center">
+                🧠 Extended Thinking
+                <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                  Reasoning
+                </span>
+              </div>
+              <div className="text-sm text-purple-700 whitespace-pre-wrap bg-purple-25 p-2 rounded border border-purple-100 max-h-60 overflow-y-auto">
+                {item.reasoningContent?.text || item.text}
+              </div>
+            </div>
+          );
         default:
           return <p key={index}>{JSON.stringify(item)}</p>;
       }
@@ -546,12 +626,12 @@ export function ChatPage() {
   }
 
   return (
-    <div className="h-screen bg-gray-50 flex">
+    <div className="h-screen bg-background text-foreground flex">
       {/* Conversation Sidebar */}
-      <div className={`bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${
+      <div className={`bg-card border-r border-border flex flex-col transition-all duration-300 ${
         sidebarOpen ? 'w-80' : 'w-16'
       }`}>
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -576,14 +656,15 @@ export function ChatPage() {
               </div>
             )}
           </div>
-          {sidebarOpen && bot && (
-            <div className="mt-2 text-sm text-gray-600">
-              Chatting with <span className="font-medium">{bot.title}</span>
-              {currentConversation && (
-                <div className="mt-1 text-xs text-gray-500">
-                  {currentConversation.title}
-                </div>
-              )}
+          
+          {/* Bot Selector */}
+          {sidebarOpen && (
+            <div className="mt-3">
+              <BotSelector
+                bots={allBots}
+                currentBot={bot}
+                className=""
+              />
             </div>
           )}
         </div>
@@ -651,47 +732,41 @@ export function ChatPage() {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 px-6 py-4">
+        <header className="bg-card border-b border-border px-6 py-4">
           <div className="flex justify-between items-center">
-            <div>
+            <div className="flex-1">
+              {/* Breadcrumbs */}
+              <Breadcrumbs items={getBreadcrumbItems()} className="mb-2" />
+              
               {bot ? (
                 <div>
                   <h1 className="text-xl font-semibold text-gray-900">{bot.title}</h1>
                   <p className="text-sm text-gray-600">{bot.description}</p>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <span className="text-xs text-gray-500">Model:</span>
+                    <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                      {getCurrentModelName()}
+                    </span>
+                    {currentModelSupportsReasoning() && (
+                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                        Extended Thinking Available
+                      </span>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded w-32 mb-2"></div>
                   <div className="h-6 bg-gray-200 rounded w-48 mb-2"></div>
                   <div className="h-4 bg-gray-200 rounded w-32"></div>
                 </div>
               )}
             </div>
             <div className="flex items-center space-x-4">
-              {/* Model Selector Dropdown */}
-              <div className="relative">
-                <label className="text-xs text-gray-500 mb-1 block">Model</label>
-                <select
-                  value={sessionModel || ''}
-                  onChange={(e) => handleModelChange(e.target.value)}
-                  className="bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {availableModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <Link
-                to="/bots"
-                className="text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                Back to Bots
-              </Link>
+              <ThemeToggle />
               <button
                 onClick={signOut}
-                className="bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-700 transition-colors"
+                className="bg-secondary text-secondary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
               >
                 Sign Out
               </button>
@@ -773,8 +848,13 @@ export function ChatPage() {
           )}
 
           {/* 🚀 INGENIOUS ENHANCEMENT: Source Citations Display */}
-          {lastChatResponse?.sources && lastChatResponse.sources.length > 0 && (
-            <SourceCitations sources={lastChatResponse.sources} className="mb-4" />
+          {((lastChatResponse?.sources && lastChatResponse.sources.length > 0) || 
+            (selectedConversationId && conversationSources[selectedConversationId])) && (
+            <SourceCitations 
+              sources={lastChatResponse?.sources || conversationSources[selectedConversationId!] || []} 
+              className="mb-4"
+              defaultCollapsed={true}
+            />
           )}
 
           {isLoading && (
@@ -803,6 +883,23 @@ export function ChatPage() {
 
         {/* Input Form */}
         <div className="border-t border-gray-200 bg-white p-4">
+          {/* Extended Thinking Toggle */}
+          {currentModelSupportsReasoning() && (
+            <div className="mb-4">
+              <ExtendedThinkingToggle
+                enabled={extendedThinkingEnabled || getCurrentModel()?.forceReasoningEnabled || false}
+                onToggle={handleExtendedThinkingToggle}
+                disabled={getCurrentModel()?.forceReasoningEnabled}
+                className=""
+              />
+              {getCurrentModel()?.forceReasoningEnabled && (
+                <p className="text-xs text-gray-500 mt-1">
+                  This model has built-in reasoning that cannot be disabled.
+                </p>
+              )}
+            </div>
+          )}
+          
           <form onSubmit={sendMessage} className="flex space-x-3">
             <input
               value={input}
@@ -864,53 +961,6 @@ export function ChatPage() {
         </div>
       )}
 
-      {/* Model Change Warning Dialog */}
-      {showModelChangeWarning && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <div className="flex items-center mb-4">
-              <div className="flex-shrink-0">
-                <svg className="h-6 w-6 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.728-.833-2.498 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </div>
-              <h3 className="ml-3 text-lg font-semibold text-gray-900">Switch Model?</h3>
-            </div>
-            
-            <p className="text-sm text-gray-600 mb-6">
-              You're currently in the middle of a conversation. Switching models will start a new conversation with the selected model. 
-              Your current conversation will be saved.
-            </p>
-            
-            <div className="mb-4">
-              <p className="text-sm font-medium text-gray-700 mb-1">Current Model:</p>
-              <p className="text-sm text-gray-600">{getCurrentModelName()}</p>
-            </div>
-            
-            <div className="mb-6">
-              <p className="text-sm font-medium text-gray-700 mb-1">New Model:</p>
-              <p className="text-sm text-gray-600">
-                {availableModels.find(m => m.id === pendingModelChange)?.name || 'Unknown'}
-              </p>
-            </div>
-            
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={cancelModelChange}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmModelChange}
-                className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors"
-              >
-                Start New Conversation
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
