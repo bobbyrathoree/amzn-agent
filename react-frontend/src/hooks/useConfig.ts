@@ -1,16 +1,24 @@
 import { useState, useEffect } from 'react';
+import { useMountedRef } from './useMountedRef';
 import type { Config } from '../types';
 
 export function useConfig() {
   const [config, setConfig] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Track component mount state to prevent memory leaks
+  const mountedRef = useMountedRef();
 
   useEffect(() => {
     const loadConfig = async () => {
+      if (!mountedRef.current) return;
+      
       try {
-        setLoading(true);
-        setError(null);
+        if (mountedRef.current) {
+          setLoading(true);
+          setError(null);
+        }
 
         // Try to load config.json from public directory (deployed by CDK)
         const response = await fetch('/config.json', {
@@ -31,15 +39,16 @@ export function useConfig() {
           throw new Error('Invalid config: missing required fields');
         }
 
-        setConfig(configData);
-        console.log('Config loaded successfully:', {
-          environment: configData.environment,
-          region: configData.region,
-          apiEndpoint: configData.apiEndpoint
-        });
+        if (mountedRef.current) {
+          setConfig(configData);
+        }
+        // Config loaded successfully
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error loading config';
-        setError(errorMessage);
+        
+        if (mountedRef.current) {
+          setError(errorMessage);
+        }
         console.error('Error loading config:', err);
         
         // Fallback to environment variables for local development
@@ -53,13 +62,15 @@ export function useConfig() {
           region: import.meta.env.VITE_AWS_REGION || 'us-east-1'
         };
 
-        if (fallbackConfig.userPoolId) {
+        if (fallbackConfig.userPoolId && mountedRef.current) {
           setConfig(fallbackConfig);
           setError(null);
-          console.log('Using fallback config from environment variables');
+          // Using fallback config from environment variables
         }
       } finally {
-        setLoading(false);
+        if (mountedRef.current) {
+          setLoading(false);
+        }
       }
     };
 

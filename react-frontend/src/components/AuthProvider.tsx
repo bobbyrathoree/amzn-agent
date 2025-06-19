@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { getCurrentUser, signIn, signOut, signUp, confirmSignUp, fetchAuthSession } from 'aws-amplify/auth';
 import type { AuthUser } from 'aws-amplify/auth';
 import { configureAmplify } from '../lib/amplify';
+import { useMountedRef } from '../hooks/useMountedRef';
 import type { User, Config } from '../types';
 
 interface AuthContextType {
@@ -45,6 +46,9 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [showLogin, setShowLogin] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Track component mount state to prevent memory leaks
+  const mountedRef = useMountedRef();
 
   useEffect(() => {
     if (config) {
@@ -54,19 +58,26 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
   }, [config]);
 
   const checkAuthState = async () => {
-    if (!config) return;
+    if (!config || !mountedRef.current) return;
     
     try {
       const authUser = await getCurrentUser();
       const userInfo = await convertAuthUserToUser(authUser);
-      setUser(userInfo);
-      setShowLogin(false);
+      
+      if (mountedRef.current) {
+        setUser(userInfo);
+        setShowLogin(false);
+      }
     } catch (error) {
       console.log('No authenticated user found');
-      setUser(null);
-      setShowLogin(true);
+      if (mountedRef.current) {
+        setUser(null);
+        setShowLogin(true);
+      }
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -88,35 +99,28 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
 
   const getAccessToken = async (): Promise<string | null> => {
     try {
-      console.log('🔑 Fetching auth session...');
       const session = await fetchAuthSession();
-      console.log('🔑 Auth session:', {
-        credentials: !!session.credentials,
-        tokens: !!session.tokens,
-        accessToken: !!session.tokens?.accessToken,
-        idToken: !!session.tokens?.idToken
-      });
       
       if (!session.tokens?.idToken) {
-        console.warn('🔑 No ID token in session');
         return null;
       }
       
       const token = session.tokens.idToken.toString();
-      console.log('🔑 ID token retrieved:', token.substring(0, 20) + '...');
       return token;
     } catch (error) {
-      console.error('🔑 Error getting access token:', error);
+      console.error('Error getting access token:', error);
       return null;
     }
   };
 
   const handleSignIn = async (email: string, password: string): Promise<boolean> => {
+    if (!mountedRef.current) return false;
+    
     setIsLoading(true);
     setError(null);
     
     try {
-      console.log('🔐 Attempting sign in for:', email);
+      // Attempting sign in
       const { isSignedIn } = await signIn({ 
         username: email, 
         password,
@@ -125,29 +129,39 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
         }
       });
       
-      console.log('🔐 Sign in result:', { isSignedIn });
+      // Sign in completed
       
       if (isSignedIn) {
         // Test token availability immediately after sign in
         const testToken = await getAccessToken();
-        console.log('🔐 Token available after sign in:', !!testToken);
+        console.log('Token received in AuthProvider:', testToken ? 'Present' : 'Not present');
         
-        await checkAuthState();
+        if (mountedRef.current) {
+          await checkAuthState();
+        }
         return true;
       } else {
-        setError('Sign in failed. Please check your credentials.');
+        if (mountedRef.current) {
+          setError('Sign in failed. Please check your credentials.');
+        }
         return false;
       }
     } catch (error: any) {
-      console.error('🔐 Sign in error:', error);
-      setError(error.message || 'Sign in failed. Please try again.');
+      console.error('Sign in error:', error);
+      if (mountedRef.current) {
+        setError(error.message || 'Sign in failed. Please try again.');
+      }
       return false;
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
   const handleSignUp = async (email: string, password: string, fullName?: string) => {
+    if (!mountedRef.current) throw new Error('Component unmounted');
+    
     setError(null);
     
     try {
@@ -165,16 +179,20 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
       return result;
     } catch (error: any) {
       console.error('Sign up error:', error);
-      if (error.message.includes('email domain')) {
-        setError('Only Amazon employees can create accounts. Please use your @amazon.com email address.');
-      } else {
-        setError(error.message || 'Sign up failed. Please try again.');
+      if (mountedRef.current) {
+        if (error.message.includes('email domain')) {
+          setError('Only Amazon employees can create accounts. Please use your @amazon.com email address.');
+        } else {
+          setError(error.message || 'Sign up failed. Please try again.');
+        }
       }
       throw error;
     }
   };
 
   const handleConfirmSignUp = async (email: string, code: string) => {
+    if (!mountedRef.current) throw new Error('Component unmounted');
+    
     setError(null);
     
     try {
@@ -184,7 +202,9 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
       });
     } catch (error: any) {
       console.error('Confirmation error:', error);
-      setError(error.message || 'Email confirmation failed. Please try again.');
+      if (mountedRef.current) {
+        setError(error.message || 'Email confirmation failed. Please try again.');
+      }
       throw error;
     }
   };
@@ -192,8 +212,10 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
   const handleSignOut = async () => {
     try {
       await signOut();
-      setUser(null);
-      setShowLogin(true);
+      if (mountedRef.current) {
+        setUser(null);
+        setShowLogin(true);
+      }
       navigate('/'); // Redirect to homepage on logout
     } catch (error) {
       console.error('Sign out error:', error);

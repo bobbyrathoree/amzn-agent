@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
 import { useApiClient } from '../lib/api';
+import { BotToolsSelector } from '../components/BotToolsSelector';
+import { initializeTools } from '../tools';
 import type { 
   CreateBotRequest, 
-  AgentTool,
   PresignedUploadRequest,
   PresignedUploadResponse,
   DocumentInfo
@@ -97,16 +98,13 @@ export function BotCreatePage() {
     { id: 'us.meta.llama3-2-1b-instruct-v1:0', name: 'Llama 3.2 1B', family: 'llama' }
   ];
 
-  const availableTools = [
-    { type: 'plain', name: 'calculator', description: 'Perform mathematical calculations' },
-    { type: 'plain', name: 'code_interpreter', description: 'Execute and analyze code' },
-    { type: 'internet', name: 'web_search', description: 'Search the internet for information' },
-    { type: 'plain', name: 'file_analysis', description: 'Analyze file contents' },
-  ];
+  // Removed: old availableTools - now handled by BotToolsSelector
 
   useEffect(() => {
     // Load existing Knowledge Bases when component mounts
     loadExistingKnowledgeBases();
+    // Initialize tools framework
+    initializeTools();
   }, []);
 
   const loadExistingKnowledgeBases = async () => {
@@ -175,28 +173,6 @@ export function BotCreatePage() {
     }));
   };
 
-  const handleToolToggle = (tool: any) => {
-    const isSelected = formData.agentTools.some(t => t.name === tool.name);
-    
-    if (isSelected) {
-      setFormData(prev => ({
-        ...prev,
-        agentTools: prev.agentTools.filter(t => t.name !== tool.name)
-      }));
-    } else {
-      const newTool: AgentTool = {
-        type: tool.type as 'plain' | 'internet' | 'bedrock_agent',
-        name: tool.name,
-        description: tool.description,
-        config: {}
-      };
-      
-      setFormData(prev => ({
-        ...prev,
-        agentTools: [...prev.agentTools, newTool]
-      }));
-    }
-  };
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || !apiClient) return;
@@ -675,30 +651,11 @@ export function BotCreatePage() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Agent Tools
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {availableTools.map((tool) => (
-                      <label
-                        key={tool.name}
-                        className="flex items-center p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={formData.agentTools.some(t => t.name === tool.name)}
-                          onChange={() => handleToolToggle(tool)}
-                          className="mr-3"
-                        />
-                        <div>
-                          <div className="font-medium text-sm">{tool.name}</div>
-                          <div className="text-xs text-gray-500">{tool.description}</div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                {/* Enhanced Bot Tools Selection */}
+                <BotToolsSelector
+                  selectedTools={formData.agentTools}
+                  onToolsChange={(tools) => setFormData(prev => ({ ...prev, agentTools: tools }))}
+                />
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">

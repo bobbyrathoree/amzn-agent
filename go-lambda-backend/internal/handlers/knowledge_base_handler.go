@@ -257,34 +257,3 @@ func (h *KnowledgeBaseHandler) HandleKnowledgeBaseValidation(ctx context.Context
 	}, nil
 }
 
-// Helper functions for error handling
-func isAccessDeniedError(err error) bool {
-	errStr := err.Error()
-	return contains(errStr, "AccessDenied") ||
-		contains(errStr, "UnauthorizedOperation") ||
-		contains(errStr, "Forbidden") ||
-		contains(errStr, "access denied")
-}
-
-func isNotFoundError(err error) bool {
-	errStr := err.Error()
-	return contains(errStr, "ResourceNotFound") ||
-		contains(errStr, "NotFound") ||
-		contains(errStr, "does not exist")
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || 
-		(len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || 
-		len(s) > len(substr)+1 && s[len(s)-len(substr)-1:len(s)-1] == substr)))
-}
-
-// corsHeaders returns CORS headers for API responses
-func corsHeaders() map[string]string {
-	return map[string]string{
-		"Content-Type":                 "application/json",
-		"Access-Control-Allow-Origin":  "*",
-		"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-		"Access-Control-Allow-Headers": "Content-Type, Authorization",
-	}
-}

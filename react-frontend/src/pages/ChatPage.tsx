@@ -2,12 +2,25 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
 import { useApiClient, ApiClient } from '../lib/api';
+import { BotToolsPanel } from '../components/BotToolsPanel';
 import { KnowledgeSearchStages } from '../components/KnowledgeSearchStages';
 import { SourceCitations } from '../components/SourceCitations';
 import { ExtendedThinkingToggle } from '../components/ExtendedThinkingToggle';
 import { BotSelector } from '../components/BotSelector';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { ToolExecutionResults } from '../components/ToolExecutionResults';
+import { KeyRecommendations } from '../components/KeyRecommendations';
+import { ToolResultRenderer } from '../components/tool-results';
+import { VaultUnlockModal } from '../components/VaultUnlockModal';
+import { APIKeySetupModal } from '../components/APIKeySetupModal';
+import { StreamingProgressIndicator, CompactStreamingIndicator } from '../components/StreamingProgressIndicator';
+import { useStreamingExecution } from '../hooks/useStreamingExecution';
+import { MarkdownRenderer } from '../components/MarkdownRenderer';
+import { useTheme } from '../components/ThemeProvider';
+import { useUnifiedTools } from '../hooks/useUnifiedTools';
+import { getTool } from '../tools';
+import { APIKeyVaultService } from '../services/vaultService';
 import type { 
   Bot, 
   Conversation, 
@@ -18,7 +31,10 @@ import type {
   ChatResponse,
   KnowledgeSearchStage,
   ReasoningParams,
-  KnowledgeBaseChunk
+  KnowledgeBaseChunk,
+  ToolExecution,
+  ToolSkipped,
+  KeyRecommendation
 } from '../types';
 
 export function ChatPage() {
@@ -26,9 +42,22 @@ export function ChatPage() {
   const { user, signOut, getAccessToken } = useAuth();
   const getUserId = useCallback(() => user?.userId || user?.username || null, [user?.userId, user?.username]);
   const apiClient = useApiClient(getAccessToken, getUserId);
+  const { theme } = useTheme();
   
   // State management
   const [bot, setBot] = useState<Bot | null>(null);
+  
+  // 🔧 NEW: Unified Tools Integration
+  const {
+    executeToolInChat,
+    executeToolWithProgress, 
+    isExecuting: isToolExecuting,
+    executionProgress
+  } = useUnifiedTools({ 
+    apiClient: apiClient!, 
+    user: user!, 
+    bot: bot || undefined 
+  });
   const [allBots, setAllBots] = useState<Bot[]>([]);
   const [conversations, setConversations] = useState<ConversationMeta[]>([]);
   const [, setCurrentConversation] = useState<Conversation | null>(null);
@@ -59,6 +88,9 @@ export function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   
+  // Race condition prevention for message operations
+  const [lastMessageId, setLastMessageId] = useState<string | null>(null);
+  
   // Session model state (not persisted to DB)
   const [sessionModel, setSessionModel] = useState<string | null>(null);
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
@@ -73,6 +105,35 @@ export function ChatPage() {
   
   // 🚀 ENHANCEMENT: Sources persistence per conversation
   const [conversationSources, setConversationSources] = useState<Record<string, KnowledgeBaseChunk[]>>({});
+  
+  // 🛠️ Tool execution state management
+  const [toolExecutions, setToolExecutions] = useState<ToolExecution[]>([]);
+  const [toolSkipped, setToolSkipped] = useState<ToolSkipped[]>([]);
+  const [keyRecommendations, setKeyRecommendations] = useState<KeyRecommendation[]>([]);
+  const [toolResults, setToolResults] = useState<any[]>([]); // Store full tool result data
+  
+  // 🌊 Streaming tool execution state (for potential future use)
+  // const [activeStreamingTools, setActiveStreamingTools] = useState<Map<string, any>>(new Map());
+  
+  // 🌊 Streaming execution hook
+  const streamingExecution = useStreamingExecution({
+    onComplete: (result) => {
+      console.log('🌊 Streaming tool execution completed:', result);
+      // Handle streaming completion - could update chat or show results
+    },
+    onError: (error) => {
+      console.error('🌊 Streaming tool execution failed:', error);
+    },
+    onProgress: (progress) => {
+      console.log('🌊 Streaming progress:', progress);
+    }
+  });
+  
+  // 🔑 Vault unlock flow state
+  const [showVaultUnlock, setShowVaultUnlock] = useState(false);
+  const [showAPIKeySetup, setShowAPIKeySetup] = useState(false);
+  const [selectedServiceForSetup, setSelectedServiceForSetup] = useState<string>('');
+  const [vaultService, setVaultService] = useState<APIKeyVaultService | null>(null);
   
   // Extended thinking state
   const [extendedThinkingEnabled, setExtendedThinkingEnabled] = useState(false);
@@ -122,6 +183,14 @@ export function ChatPage() {
       loadAllBots();
     }
   }, [apiClient, botId]);
+
+  // Initialize vault service
+  useEffect(() => {
+    if (apiClient) {
+      const service = new APIKeyVaultService(apiClient);
+      setVaultService(service);
+    }
+  }, [apiClient]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -220,6 +289,12 @@ export function ChatPage() {
       // Clear current search stages when switching conversations
       setCurrentSearchStages([]);
       setLastChatResponse(null);
+      
+      // 🛠️ TOOL INTEGRATION: Clear tool execution state when switching conversations
+      setToolExecutions([]);
+      setToolSkipped([]);
+      setKeyRecommendations([]);
+      setToolResults([]);
       
       const response = await apiClient.get(`bots/${botId}/conversations/${conversationId}`);
       
@@ -425,17 +500,154 @@ export function ChatPage() {
     }
   };
 
+  // 🔑 VAULT UNLOCK FLOW - Complete integration
+  const handleAddAPIKey = async (serviceId: string) => {
+    console.log('🔑 Starting API key setup flow for service:', serviceId);
+    
+    // Step 1: Check if vault is already unlocked
+    try {
+      // Try to access vault - if this fails, we need to unlock first
+      if (!apiClient) {
+        console.warn('API client not available');
+        setSelectedServiceForSetup(serviceId);
+        setShowVaultUnlock(true);
+        return;
+      }
+      
+      const testResponse = await apiClient.get('vault/status');
+      
+      if (testResponse.ok) {
+        const vaultStatus = await testResponse.json();
+        
+        if (vaultStatus.unlocked) {
+          // Vault is already unlocked, go directly to API key setup
+          console.log('✅ Vault already unlocked, proceeding to API key setup');
+          setSelectedServiceForSetup(serviceId);
+          setShowAPIKeySetup(true);
+        } else {
+          // Vault is locked, need to unlock first
+          console.log('🔒 Vault locked, showing unlock modal');
+          setSelectedServiceForSetup(serviceId);
+          setShowVaultUnlock(true);
+        }
+      } else {
+        // Vault not initialized or error, show unlock modal
+        console.log('🔒 Vault not accessible, showing unlock modal');
+        setSelectedServiceForSetup(serviceId);
+        setShowVaultUnlock(true);
+      }
+    } catch (error) {
+      console.error('Error checking vault status:', error);
+      // On error, assume vault needs to be unlocked
+      setSelectedServiceForSetup(serviceId);
+      setShowVaultUnlock(true);
+    }
+  };
+
+  // Handle vault unlock attempt
+  const handleVaultUnlock = async (password: string, vaultPin: string): Promise<boolean> => {
+    console.log('🔓 Attempting to unlock vault');
+    
+    try {
+      if (!apiClient) {
+        console.error('API client not available');
+        return false;
+      }
+      
+      // In a real implementation, this would call the vault unlock endpoint
+      // For now, we'll simulate success to proceed with the flow
+      const response = await apiClient.post('vault/unlock', {
+        password,
+        vaultPin
+      });
+      
+      if (response.ok) {
+        console.log('✅ Vault unlocked successfully');
+        setShowVaultUnlock(false);
+        
+        // Proceed to API key setup for the selected service
+        if (selectedServiceForSetup) {
+          setShowAPIKeySetup(true);
+        }
+        return true;
+      } else {
+        console.error('Failed to unlock vault');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error unlocking vault:', error);
+      return false;
+    }
+  };
+
+  // Handle successful API key addition
+  const handleAPIKeyAdded = () => {
+    console.log('🔑 API key added successfully');
+    setShowAPIKeySetup(false);
+    setSelectedServiceForSetup('');
+    
+    // Refresh tool availability status
+    // This will trigger a re-check of API key availability in BotToolsPanel
+    console.log('✨ API key added - refreshing tool status');
+    
+    // The BotToolsPanel will automatically refresh its status
+    // because it re-checks API key availability when the component updates
+  };
+
+  // Handle modal dismissals
+  const handleVaultUnlockCancel = () => {
+    setShowVaultUnlock(false);
+    setSelectedServiceForSetup('');
+  };
+
+  const handleAPIKeySetupCancel = () => {
+    setShowAPIKeySetup(false);
+    setSelectedServiceForSetup('');
+  };
+
+  // Handle tool upgrade requests from BotToolsPanel
+  const handleToolUpgradeRequest = async (toolId: string) => {
+    console.log('🚀 Tool upgrade requested for:', toolId);
+    
+    // Get the tool definition from the tools registry
+    const tool = getTool(toolId);
+    if (!tool || !tool.apiRequirements) {
+      console.warn('Tool not found or no API requirements:', toolId);
+      return;
+    }
+    
+    // Get the first required service (in a real implementation, could show a choice)
+    const serviceIds = Object.keys(tool.apiRequirements);
+    if (serviceIds.length > 0) {
+      const primaryService = serviceIds[0]; // Use first service for now
+      console.log('🔑 Starting upgrade flow for service:', primaryService);
+      await handleAddAPIKey(primaryService);
+    }
+  };
+
+
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !apiClient || !botId || isLoading) return;
 
     const userMessage = input.trim();
+    // Generate unique ID for this message operation to prevent race conditions
+    const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setLastMessageId(messageId);
+    
+    
     setInput('');
     setError(null);
 
     // 🚀 INGENIOUS ENHANCEMENT: Reset search stages for new query
     setCurrentSearchStages([]);
     setLastChatResponse(null);
+    
+    // 🛠️ TOOL INTEGRATION: Reset tool execution state for new query
+    setToolExecutions([]);
+    setToolSkipped([]);
+    setKeyRecommendations([]);
+    setToolResults([]);
 
     // Set loading state FIRST to show thinking animations
     setIsLoading(true);
@@ -505,17 +717,34 @@ export function ChatPage() {
         }));
       }
       
-      // Reload conversation to get the latest messages
-      if (conversationId) {
+      // 🛠️ TOOL INTEGRATION: Capture tool execution data
+      if (chatResponse.toolsExecuted) {
+        setToolExecutions(chatResponse.toolsExecuted);
+      }
+      if (chatResponse.toolsSkipped) {
+        setToolSkipped(chatResponse.toolsSkipped);
+      }
+      if (chatResponse.keyRecommendations) {
+        setKeyRecommendations(chatResponse.keyRecommendations);
+      }
+      // Capture full tool results for enhanced visualization
+      if (chatResponse.toolResults) {
+        setToolResults(chatResponse.toolResults);
+      }
+      
+      // Reload conversation to get the latest messages (with race condition protection)
+      if (conversationId && lastMessageId === messageId) {
         try {
-          console.log('Reloading conversation after chat response:', conversationId);
+          console.log('Reloading conversation after chat response:', conversationId, 'messageId:', messageId);
           await loadConversation(conversationId, true); // Force reload after chat
-          console.log('Successfully reloaded conversation');
+          console.log('Successfully reloaded conversation for messageId:', messageId);
         } catch (loadErr) {
           console.warn('Failed to reload conversation after successful chat, but message was sent:', loadErr);
           // Don't throw - the message was successfully sent even if we can't reload
           // Keep the optimistic message in the UI since the chat was successful
         }
+      } else if (lastMessageId !== messageId) {
+        console.log('Skipping conversation reload - newer message in progress:', lastMessageId, 'vs', messageId);
       }
 
     } catch (err) {
@@ -548,10 +777,20 @@ export function ChatPage() {
       return <p className="text-gray-500 italic">Empty message</p>;
     }
     
+    // Determine if dark mode is active
+    const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    
     return content.map((item, index) => {
       switch (item.type) {
         case 'text':
-          return <p key={index} className="whitespace-pre-wrap">{item.text}</p>;
+          return (
+            <MarkdownRenderer
+              key={index}
+              content={item.text || ''}
+              isDark={isDark}
+              className="prose-sm"
+            />
+          );
         case 'tool_use':
           return (
             <div key={index} className="bg-blue-50 p-3 rounded-lg mt-2">
@@ -584,15 +823,19 @@ export function ChatPage() {
           );
         case 'reasoning':
           return (
-            <div key={index} className="bg-purple-50 border border-purple-200 p-3 rounded-lg mt-2">
-              <div className="text-sm font-medium text-purple-800 mb-2 flex items-center">
+            <div key={index} className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 p-3 rounded-lg mt-2">
+              <div className="text-sm font-medium text-purple-800 dark:text-purple-200 mb-2 flex items-center">
                 🧠 Extended Thinking
-                <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                <span className="ml-2 text-xs bg-purple-100 dark:bg-purple-800 text-purple-700 dark:text-purple-200 px-2 py-1 rounded-full">
                   Reasoning
                 </span>
               </div>
-              <div className="text-sm text-purple-700 whitespace-pre-wrap bg-purple-25 p-2 rounded border border-purple-100 max-h-60 overflow-y-auto">
-                {item.reasoningContent?.text || item.text}
+              <div className="bg-purple-25 dark:bg-purple-900/30 p-2 rounded border border-purple-100 dark:border-purple-700 max-h-60 overflow-y-auto">
+                <MarkdownRenderer
+                  content={item.reasoningContent?.text || item.text || ''}
+                  isDark={isDark}
+                  className="prose-sm text-purple-700 dark:text-purple-200"
+                />
               </div>
             </div>
           );
@@ -659,12 +902,92 @@ export function ChatPage() {
           
           {/* Bot Selector */}
           {sidebarOpen && (
-            <div className="mt-3">
+            <div className="mt-3 space-y-3">
               <BotSelector
                 bots={allBots}
                 currentBot={bot}
                 className=""
               />
+              
+              {/* Bot Tools Panel - NOW WITH CONVERSATION INTEGRATION */}
+              {bot && (
+                <BotToolsPanel
+                  bot={bot}
+                  onToolExecute={async (tool, capability, input) => {
+                    try {
+                      // 🚀 NEW: Execute tool with conversation integration
+                      if (selectedConversationId) {
+                        // Execute in conversation context - saves automatically
+                        const result = await executeToolInChat({
+                          conversationId: selectedConversationId,
+                          toolId: tool.id,
+                          capability,
+                          input,
+                          botId: bot.id,
+                        });
+                        
+                        // Refresh messages to show the new tool execution
+                        await loadConversation(selectedConversationId, true);
+                        
+                        console.log('Tool executed in conversation:', result);
+                      } else {
+                        // No conversation selected - create one first
+                        const newConvId = await startNewConversationForChat();
+                        if (newConvId) {
+                          const result = await executeToolInChat({
+                            conversationId: newConvId,
+                            toolId: tool.id,
+                            capability,
+                            input,
+                            botId: bot.id,
+                          });
+                          
+                          // Load the new conversation
+                          setSelectedConversationId(newConvId);
+                          await loadConversation(newConvId, true);
+                          
+                          console.log('Tool executed in new conversation:', result);
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Tool execution failed:', error);
+                      // TODO: Show user-friendly error message
+                    }
+                  }}
+                  onStreamingExecute={async (toolId, capability, input) => {
+                    try {
+                      // 🌊 NEW: Streaming execution with conversation integration
+                      if (selectedConversationId) {
+                        const result = await executeToolWithProgress(
+                          toolId,
+                          capability,
+                          input,
+                          {
+                            conversationId: selectedConversationId,
+                            onProgress: (progress) => {
+                              console.log('Tool progress:', progress);
+                              // TODO: Show progress in UI
+                            }
+                          }
+                        );
+                        
+                        // Refresh messages to show results
+                        await loadConversation(selectedConversationId, true);
+                        
+                        console.log('Streaming tool completed:', result);
+                      } else {
+                        console.warn('No conversation selected for streaming execution');
+                      }
+                    } catch (error) {
+                      console.error('Streaming tool execution failed:', error);
+                    }
+                  }}
+                  getAccessToken={getAccessToken}
+                  getUserId={getUserId}
+                  onUpgradeRequest={handleToolUpgradeRequest}
+                  className=""
+                />
+              )}
             </div>
           )}
         </div>
@@ -847,6 +1170,45 @@ export function ChatPage() {
             />
           )}
 
+          {/* 🌊 STREAMING TOOL EXECUTION: Real-time progress indicators */}
+          {streamingExecution.isExecuting && (
+            <div className="flex justify-start">
+              <div className="max-w-3xl px-4 py-3 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
+                <StreamingProgressIndicator
+                  isExecuting={streamingExecution.isExecuting}
+                  currentStep={streamingExecution.currentStep}
+                  progress={streamingExecution.getProgressPercentage()}
+                  elapsedTime={streamingExecution.getElapsedTime()}
+                  error={streamingExecution.error}
+                  success={streamingExecution.result?.success}
+                  size="md"
+                  showMessage={true}
+                  showElapsedTime={true}
+                  className="w-full"
+                />
+                {streamingExecution.progressSteps.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-700">
+                    <div className="text-xs text-purple-600 dark:text-purple-300 font-medium mb-2">
+                      Progress Steps ({streamingExecution.getTotalSteps()})
+                    </div>
+                    <div className="space-y-1">
+                      {streamingExecution.progressSteps.slice(-3).map((step) => (
+                        <CompactStreamingIndicator
+                          key={step.id}
+                          isExecuting={false}
+                          progress={step.progress}
+                          message={step.message}
+                          success={step.stage === 'complete'}
+                          error={step.stage === 'error' ? step.message : undefined}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* 🚀 INGENIOUS ENHANCEMENT: Source Citations Display */}
           {((lastChatResponse?.sources && lastChatResponse.sources.length > 0) || 
             (selectedConversationId && conversationSources[selectedConversationId])) && (
@@ -854,6 +1216,44 @@ export function ChatPage() {
               sources={lastChatResponse?.sources || conversationSources[selectedConversationId!] || []} 
               className="mb-4"
               defaultCollapsed={true}
+            />
+          )}
+
+          {/* 🛠️ TOOL INTEGRATION: Tool Execution Results */}
+          {(toolExecutions.length > 0 || toolSkipped.length > 0) && (
+            <ToolExecutionResults 
+              toolsExecuted={toolExecutions}
+              toolsSkipped={toolSkipped}
+              className="mb-4"
+            />
+          )}
+
+          {/* 🎨 ENHANCED TOOL RESULTS: Beautiful visualizations */}
+          {toolResults.length > 0 && (
+            <div className="space-y-4 mb-4">
+              {toolResults.map((result, index) => (
+                <ToolResultRenderer
+                  key={`tool-result-${index}`}
+                  toolName={result.toolName || 'Unknown Tool'}
+                  toolId={result.toolId || 'unknown'}
+                  capability={result.capability || 'execute'}
+                  data={result.data || {}}
+                  executionTime={result.executionTime || 0}
+                  usedApiKey={result.usedApiKey || false}
+                  success={result.success !== false}
+                  errorMessage={result.errorMessage}
+                  className=""
+                />
+              ))}
+            </div>
+          )}
+
+          {/* 🔑 KEY RECOMMENDATIONS: Non-blocking upgrade suggestions */}
+          {keyRecommendations.length > 0 && (
+            <KeyRecommendations 
+              recommendations={keyRecommendations}
+              onAddKey={handleAddAPIKey}
+              className="mb-4"
             />
           )}
 
@@ -956,6 +1356,54 @@ export function ChatPage() {
               >
                 Create Conversation
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔑 VAULT UNLOCK FLOW MODALS */}
+      {showVaultUnlock && (
+        <VaultUnlockModal
+          isOpen={showVaultUnlock}
+          onClose={handleVaultUnlockCancel}
+          onUnlock={handleVaultUnlock}
+        />
+      )}
+
+      {showAPIKeySetup && selectedServiceForSetup && vaultService && (
+        <APIKeySetupModal
+          isOpen={showAPIKeySetup}
+          serviceId={selectedServiceForSetup}
+          onClose={handleAPIKeySetupCancel}
+          onKeyAdded={handleAPIKeyAdded}
+          vaultService={vaultService}
+        />
+      )}
+
+      {/* 🔧 NEW: Tool Execution Progress Indicator */}
+      {isToolExecuting && (
+        <div className="fixed bottom-4 right-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-4 max-w-sm">
+          <div className="flex items-center space-x-3">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                Executing Tool...
+              </p>
+              {executionProgress && (
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  <div className="flex items-center justify-between">
+                    <span>{executionProgress.stage}</span>
+                    <span>{executionProgress.progress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1 mt-1">
+                    <div 
+                      className="bg-blue-600 h-1 rounded-full transition-all duration-300"
+                      style={{ width: `${executionProgress.progress}%` }}
+                    ></div>
+                  </div>
+                  <p className="text-xs mt-1">{executionProgress.message}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>

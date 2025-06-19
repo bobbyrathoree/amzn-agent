@@ -95,7 +95,7 @@ export class ApiClient {
   async get(path: string): Promise<Response> {
     const headers = await this.getHeaders();
     const url = this.getUrl(path);
-    console.log('GET request to:', url);
+    // GET request
     return fetch(url, {
       method: 'GET',
       headers,
@@ -105,7 +105,7 @@ export class ApiClient {
   async post(path: string, body?: any): Promise<Response> {
     const headers = await this.getHeaders();
     const url = this.getUrl(path);
-    console.log('POST request to:', url, 'Body:', body);
+    // POST request
     return fetch(url, {
       method: 'POST',
       headers,
@@ -155,7 +155,7 @@ export class ApiClient {
     const headers = await this.getHeaders();
     const url = this.getUrl(path);
     
-    console.log('Streaming chat request to:', url, 'Body:', body);
+    // Streaming chat request
     
     const response = await fetch(url, {
       method: 'POST',

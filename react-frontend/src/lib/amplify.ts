@@ -23,12 +23,7 @@ export const configureAmplify = (config: Config) => {
 
   Amplify.configure(amplifyConfig);
   isConfigured = true;
-  console.log('🔧 Amplify configured with:', { 
-    userPoolId: config.userPoolId,
-    userPoolClientId: config.userPoolClientId.substring(0, 10) + '...',
-    region: config.region 
-  });
-  console.log('🔧 Full Amplify config:', amplifyConfig);
+  // Amplify configured successfully
 };
 
 export { Amplify };

@@ -2,6 +2,7 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -73,4 +74,49 @@ func NoContentResponse() events.APIGatewayProxyResponse {
 			"Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,x-user-id",
 		},
 	}
+}
+
+// ExtractUserIDFromRequest extracts user ID from API Gateway request context (Cognito JWT)
+func ExtractUserIDFromRequest(request events.APIGatewayProxyRequest) (string, error) {
+	userID := ""
+	
+	// Extract user ID from the authorizer context (Cognito User Pool)
+	if request.RequestContext.Authorizer != nil {
+		// Try direct sub claim
+		if id, ok := request.RequestContext.Authorizer["sub"].(string); ok {
+			userID = id
+		}
+		// Try alternative userId format
+		if id, ok := request.RequestContext.Authorizer["userId"].(string); ok && userID == "" {
+			userID = id
+		}
+		
+		// Check for claims in nested format
+		if claims, ok := request.RequestContext.Authorizer["claims"].(map[string]interface{}); ok {
+			if sub, exists := claims["sub"].(string); exists && userID == "" {
+				userID = sub
+			}
+		}
+	}
+	
+	// Fallback for development/testing
+	if userID == "" {
+		if id := request.Headers["X-User-ID"]; id != "" {
+			userID = id
+		}
+		if id := request.Headers["x-user-id"]; id != "" && userID == "" {
+			userID = id
+		}
+	}
+	
+	if userID == "" {
+		return "", errors.New("user ID not found in request context or headers")
+	}
+	
+	return userID, nil
+}
+
+// ErrorFromString creates an error from a string message
+func ErrorFromString(message string) error {
+	return errors.New(message)
 }

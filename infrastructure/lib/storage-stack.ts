@@ -13,6 +13,7 @@ export class StorageStack extends cdk.Stack {
   public readonly botsTable: dynamodb.Table;
   public readonly conversationsTable: dynamodb.Table;
   public readonly messagesTable: dynamodb.Table;
+  public readonly vaultTable: dynamodb.Table;
   public readonly storageBucket: s3.Bucket;
   public readonly allTables: dynamodb.Table[];
   
@@ -25,7 +26,7 @@ export class StorageStack extends cdk.Stack {
       partitionKey: { name: 'ID', type: dynamodb.AttributeType.STRING },
       ...props.config.dynamoTableProps,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
-      pointInTimeRecovery: props.config.env === 'prod',
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: props.config.env === 'prod' },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
     
@@ -43,7 +44,7 @@ export class StorageStack extends cdk.Stack {
       sortKey: { name: 'ID', type: dynamodb.AttributeType.STRING },
       ...props.config.dynamoTableProps,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
-      pointInTimeRecovery: props.config.env === 'prod',
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: props.config.env === 'prod' },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
     
@@ -62,7 +63,18 @@ export class StorageStack extends cdk.Stack {
       sortKey: { name: 'Timestamp', type: dynamodb.AttributeType.NUMBER },
       ...props.config.dynamoTableProps,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
-      pointInTimeRecovery: props.config.env === 'prod',
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: props.config.env === 'prod' },
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // DynamoDB table for API key vault (encrypted storage)
+    this.vaultTable = new dynamodb.Table(this, 'VaultTable', {
+      tableName: `${props.config.prefix}Vault`,
+      partitionKey: { name: 'UserID', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'ServiceID', type: dynamodb.AttributeType.STRING },
+      ...props.config.dynamoTableProps,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: props.config.env === 'prod' },
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
     
@@ -90,7 +102,7 @@ export class StorageStack extends cdk.Stack {
     });
     
     // Collect all tables for monitoring
-    this.allTables = [this.botsTable, this.conversationsTable, this.messagesTable];
+    this.allTables = [this.botsTable, this.conversationsTable, this.messagesTable, this.vaultTable];
     
     // Export outputs
     new cdk.CfnOutput(this, 'BotsTableName', {
@@ -115,6 +127,12 @@ export class StorageStack extends cdk.Stack {
       value: this.storageBucket.bucketName,
       description: 'Storage bucket name',
       exportName: `${props.config.prefix}StorageBucketName`,
+    });
+
+    new cdk.CfnOutput(this, 'VaultTableName', {
+      value: this.vaultTable.tableName,
+      description: 'Vault table name',
+      exportName: `${props.config.prefix}VaultTableName`,
     });
   }
 }

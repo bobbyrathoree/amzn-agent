@@ -125,7 +125,43 @@ export interface ChatResponse {
   toolsUsed?: string[];
   guardrailApplied?: boolean;
   knowledgeSearchStages?: KnowledgeSearchStage[]; // 🚀 INGENIOUS ENHANCEMENT
+  // 🛠️ Enhanced Tool Integration
+  toolsExecuted?: ToolExecution[];
+  toolsSkipped?: ToolSkipped[];
+  keyRecommendations?: KeyRecommendation[];
+  toolResults?: any[]; // Full tool result data for enhanced visualization
   metadata?: Record<string, any>;
+}
+
+// Tool execution result types
+export interface ToolExecution {
+  toolName: string;
+  toolId: string;
+  capability: string;
+  executionTime: number; // milliseconds
+  usedApiKey: boolean;
+  engine?: string; // e.g., "google", "duckduckgo"
+  resultCount?: number;
+  success: boolean;
+  errorMessage?: string;
+}
+
+export interface ToolSkipped {
+  toolName: string;
+  toolId: string;
+  reason: string;
+  requiredService?: string;
+  fallbackUsed: boolean;
+}
+
+export interface KeyRecommendation {
+  serviceId: string;
+  serviceName: string;
+  description: string;
+  benefits: string[];
+  pricingInfo: string;
+  signupUrl?: string;
+  priority: 'high' | 'medium' | 'low';
 }
 
 // 🚀 INGENIOUS ENHANCEMENT: Knowledge Search Stages for Progressive Display

@@ -22,6 +22,7 @@ export interface ApiStackProps extends cdk.StackProps {
   botsTable: dynamodb.Table;
   conversationsTable: dynamodb.Table;
   messagesTable: dynamodb.Table;
+  vaultTable: dynamodb.Table;
   storageBucket: s3.Bucket;
 }
 
@@ -83,6 +84,7 @@ export class ApiStack extends cdk.Stack {
     props.botsTable.grantReadWriteData(lambdaRole);
     props.conversationsTable.grantReadWriteData(lambdaRole);
     props.messagesTable.grantReadWriteData(lambdaRole);
+    props.vaultTable.grantReadWriteData(lambdaRole);
     
     // Grant comprehensive DynamoDB permissions for all service operations
     lambdaRole.addToPolicy(new iam.PolicyStatement({
@@ -132,6 +134,8 @@ export class ApiStack extends cdk.Stack {
         `${props.conversationsTable.tableArn}/*`,
         props.messagesTable.tableArn,
         `${props.messagesTable.tableArn}/*`,
+        props.vaultTable.tableArn,
+        `${props.vaultTable.tableArn}/*`,
       ],
     }));
     
@@ -274,6 +278,8 @@ export class ApiStack extends cdk.Stack {
     const chatLambda = this.createLambdaFunction('ChatFunction', 'chat', props, lambdaRole);
     const botsLambda = this.createLambdaFunction('BotsFunction', 'bots', props, lambdaRole);
     const knowledgeLambda = this.createLambdaFunction('KnowledgeFunction', 'knowledge', props, lambdaRole);
+    const toolsLambda = this.createLambdaFunction('ToolsFunction', 'tools', props, lambdaRole);
+    const vaultLambda = this.createLambdaFunction('VaultFunction', 'vault', props, lambdaRole);
     
     // Define API routes
     // Bots API (with proper Cognito authorization)
@@ -345,6 +351,73 @@ export class ApiStack extends cdk.Stack {
     knowledgeValidateResource.addMethod('POST', new apigateway.LambdaIntegration(botsLambda), {
       authorizer,
     });
+
+    // Tools API endpoints
+    const toolsResource = this.apiGateway.root.addResource('tools');
+    
+    // List all available tools
+    toolsResource.addMethod('GET', new apigateway.LambdaIntegration(toolsLambda), {
+      authorizer,
+    });
+    
+    // Get specific tool details
+    const toolResource = toolsResource.addResource('{id}');
+    toolResource.addMethod('GET', new apigateway.LambdaIntegration(toolsLambda), {
+      authorizer,
+    });
+    
+    // Execute tool endpoint
+    const executeResource = toolsResource.addResource('execute');
+    executeResource.addMethod('POST', new apigateway.LambdaIntegration(toolsLambda), {
+      authorizer,
+    });
+    
+    // Stream tool execution endpoint
+    const streamResource = toolsResource.addResource('stream');
+    streamResource.addMethod('POST', new apigateway.LambdaIntegration(toolsLambda), {
+      authorizer,
+    });
+
+    // Vault API endpoints
+    const vaultResource = this.apiGateway.root.addResource('vault');
+    
+    // Vault status
+    const vaultStatusResource = vaultResource.addResource('status');
+    vaultStatusResource.addMethod('GET', new apigateway.LambdaIntegration(vaultLambda), {
+      authorizer,
+    });
+    
+    // Vault unlock/lock
+    const vaultUnlockResource = vaultResource.addResource('unlock');
+    vaultUnlockResource.addMethod('POST', new apigateway.LambdaIntegration(vaultLambda), {
+      authorizer,
+    });
+    
+    const vaultLockResource = vaultResource.addResource('lock');
+    vaultLockResource.addMethod('POST', new apigateway.LambdaIntegration(vaultLambda), {
+      authorizer,
+    });
+    
+    // API keys management
+    const vaultKeysResource = vaultResource.addResource('keys');
+    vaultKeysResource.addMethod('GET', new apigateway.LambdaIntegration(vaultLambda), {
+      authorizer,
+    });
+    vaultKeysResource.addMethod('POST', new apigateway.LambdaIntegration(vaultLambda), {
+      authorizer,
+    });
+    
+    // Individual key management
+    const vaultKeyResource = vaultKeysResource.addResource('{serviceId}');
+    vaultKeyResource.addMethod('GET', new apigateway.LambdaIntegration(vaultLambda), {
+      authorizer,
+    });
+    vaultKeyResource.addMethod('PUT', new apigateway.LambdaIntegration(vaultLambda), {
+      authorizer,
+    });
+    vaultKeyResource.addMethod('DELETE', new apigateway.LambdaIntegration(vaultLambda), {
+      authorizer,
+    });
     
     // Create WebSocket API for streaming
     const connectHandler = this.createLambdaFunction('WebSocketConnectFunction', 'websocket', props, lambdaRole, 'connect');
@@ -402,6 +475,8 @@ export class ApiStack extends cdk.Stack {
       BOTS_TABLE: props.botsTable.tableName,
       CONVERSATIONS_TABLE: props.conversationsTable.tableName,
       MESSAGES_TABLE: props.messagesTable.tableName,
+      VAULT_TABLE: props.vaultTable.tableName,
+      CONVERSATIONS_S3_BUCKET: props.storageBucket.bucketName,
       DOCUMENTS_BUCKET: props.storageBucket.bucketName,
       USER_POOL_ID: props.userPool.userPoolId,
       // AWS_REGION is automatically provided by Lambda runtime

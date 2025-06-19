@@ -21,6 +21,10 @@ export function BotEditPage() {
   const [description, setDescription] = useState('');
   const [instruction, setInstruction] = useState('');
   const [activeModels, setActiveModels] = useState<string[]>([]);
+  const [sharedScope, setSharedScope] = useState<'private' | 'partial' | 'public'>('private');
+  const [allowedUsers, setAllowedUsers] = useState<string[]>([]);
+  const [allowedGroups, setAllowedGroups] = useState<string[]>([]);
+  const [conversationStarters, setConversationStarters] = useState<string[]>([]);
   const [generationParams, setGenerationParams] = useState<GenerationParams>({
     maxTokens: 4000,
     temperature: 0.7,
@@ -98,6 +102,10 @@ export function BotEditPage() {
       setDescription(botData.description || '');
       setInstruction(botData.instruction || '');
       setActiveModels(botData.activeModels || []);
+      setSharedScope(botData.sharedScope || 'private');
+      setAllowedUsers(botData.allowedUsers || []);
+      setAllowedGroups(botData.allowedGroups || []);
+      setConversationStarters(botData.conversationStarters || []);
       setGenerationParams(botData.generationParams || {
         maxTokens: 4000,
         temperature: 0.7,
@@ -127,6 +135,10 @@ export function BotEditPage() {
         description,
         instruction,
         activeModels,
+        sharedScope,
+        allowedUsers,
+        allowedGroups,
+        conversationStarters,
         generationParams
       };
 
@@ -283,6 +295,98 @@ export function BotEditPage() {
                   placeholder="Enter the system instruction that defines your bot's behavior"
                   required
                 />
+              </div>
+            </div>
+
+            {/* Access & Sharing */}
+            <div className="space-y-4">
+              <h2 className="text-lg font-medium text-gray-900">Access & Sharing</h2>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Sharing Level
+                </label>
+                <select
+                  value={sharedScope}
+                  onChange={(e) => setSharedScope(e.target.value as 'private' | 'partial' | 'public')}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="private">Private (only you)</option>
+                  <option value="partial">Shared (specific users/groups)</option>
+                  <option value="public">Public (everyone)</option>
+                </select>
+              </div>
+
+              {sharedScope === 'partial' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Allowed Users (comma-separated email addresses)
+                    </label>
+                    <input
+                      type="text"
+                      value={allowedUsers.join(', ')}
+                      onChange={(e) => setAllowedUsers(e.target.value.split(',').map(u => u.trim()).filter(u => u))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="user1@example.com, user2@example.com"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Allowed Groups (comma-separated group names)
+                    </label>
+                    <input
+                      type="text"
+                      value={allowedGroups.join(', ')}
+                      onChange={(e) => setAllowedGroups(e.target.value.split(',').map(g => g.trim()).filter(g => g))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="admins, developers, testers"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Conversation Starters */}
+            <div className="space-y-4">
+              <h2 className="text-lg font-medium text-gray-900">Conversation Starters</h2>
+              <p className="text-sm text-gray-600">Add suggested conversation starters to help users get started with your bot.</p>
+              
+              <div className="space-y-2">
+                {conversationStarters.map((starter, index) => (
+                  <div key={index} className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={starter}
+                      onChange={(e) => {
+                        const newStarters = [...conversationStarters];
+                        newStarters[index] = e.target.value;
+                        setConversationStarters(newStarters);
+                      }}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Enter a conversation starter..."
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newStarters = conversationStarters.filter((_, i) => i !== index);
+                        setConversationStarters(newStarters);
+                      }}
+                      className="px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                
+                <button
+                  type="button"
+                  onClick={() => setConversationStarters([...conversationStarters, ''])}
+                  className="w-full px-3 py-2 border border-gray-300 border-dashed rounded-md text-gray-600 hover:text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  + Add Conversation Starter
+                </button>
               </div>
             </div>
 
