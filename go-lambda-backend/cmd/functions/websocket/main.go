@@ -49,8 +49,28 @@ func Handler(ctx context.Context, request events.APIGatewayWebsocketProxyRequest
 }
 
 func handleConnect(ctx context.Context, request events.APIGatewayWebsocketProxyRequest) (events.APIGatewayProxyResponse, error) {
-	log.Printf("WebSocket connection established: %s", request.RequestContext.ConnectionID)
-	
+	// Extract userId from authorizer context
+	// Security: Authorizer validates JWT and passes userId in context
+	// Reference: AppSec vulnerability ticket V1796596356
+	var userId string
+	if authMap, ok := request.RequestContext.Authorizer.(map[string]interface{}); ok {
+		if userIdVal, exists := authMap["userId"]; exists {
+			userId, _ = userIdVal.(string)
+		}
+	}
+
+	if userId == "" {
+		log.Printf("Error: userId not found in authorizer context")
+		return events.APIGatewayProxyResponse{
+			StatusCode: 401,
+			Body:       `{"error": "Unauthorized: user identity not found"}`,
+		}, nil
+	}
+
+	log.Printf("WebSocket connection established for user %s: %s", userId, request.RequestContext.ConnectionID)
+	// TODO: Store connectionId -> userId mapping in DynamoDB for connection tracking
+	// This will enable user-specific message routing and connection management
+
 	return events.APIGatewayProxyResponse{
 		StatusCode: 200,
 		Body:       `{"message": "Connected"}`,

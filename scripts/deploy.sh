@@ -46,7 +46,7 @@ function display_usage {
     echo ""
     echo "Options:"
     echo "  -e, --environment ENV   Deploy to environment (dev, prod) [default: dev]"
-    echo "  -r, --region REGION     AWS region to deploy to [defaults to us-east-1 if not found]"
+    echo "  -r, --region REGION     AWS region to deploy to [defaults to us-west-2 if not found]"
     echo "  -d, --domain DOMAIN     Custom domain name (optional)"
     echo "  -c, --cert-arn ARN      ACM certificate ARN for custom domain (optional)"
     echo "  -s, --skip-build        Skip building the Go Lambda functions"
@@ -139,12 +139,12 @@ if [ -z "$ACCOUNT_ID" ]; then
     ENVIRONMENT="dev"
 fi
 
-# Get default region if not specified or set it to us-east-1
+# Get default region if not specified or set it to us-west-2
 if [ -z "$REGION" ]; then
     REGION=$(aws configure get region 2>/dev/null) || true
     if [ -z "$REGION" ]; then
-        echo "Using default region us-east-1 for deployment."
-        REGION="us-east-1"
+        echo "Using default region us-west-2 for deployment."
+        REGION="us-west-2"
     fi
 fi
 

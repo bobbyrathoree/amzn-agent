@@ -123,7 +123,7 @@ export class Config {
     
     this.envProps = {
       account: process.env.CDK_DEFAULT_ACCOUNT,
-      region: process.env.CDK_DEFAULT_REGION || 'us-east-1',
+      region: process.env.CDK_DEFAULT_REGION || 'us-west-2',
     };
     
     // Domain configuration (if available)
@@ -847,7 +847,7 @@ export class FrontendStack extends cdk.Stack {
       identityPoolId: props.identityPool.ref,
       apiEndpoint: props.apiEndpoint,
       websocketEndpoint: props.websocketEndpoint,
-      region: props.env?.region || 'us-east-1',
+      region: props.env?.region || 'us-west-2',
     }, null, 2);
     
     // Deploy website assets to S3

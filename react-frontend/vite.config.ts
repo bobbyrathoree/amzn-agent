@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
+        // NOTE: This is the old us-east-1 production endpoint - replace with us-west-2 endpoint after deployment
         target: 'https://c9wu2knteb.execute-api.us-east-1.amazonaws.com/prod',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),

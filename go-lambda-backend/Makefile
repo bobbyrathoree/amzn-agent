@@ -1,4 +1,4 @@
-.PHONY: build clean test chatf botsf knowledgef websocketf toolsf vaultf
+.PHONY: build clean test chatf botsf knowledgef websocketf websocket-authf toolsf vaultf
 
 # Go build flags
 LDFLAGS=-ldflags "-s -w"
@@ -8,7 +8,7 @@ GOFLAGS=-trimpath
 LAMBDA_DIR=../lambda/functions
 
 # Function names
-FUNCTIONS=chat bots knowledge websocket tools vault
+FUNCTIONS=chat bots knowledge websocket websocket-auth tools vault
 
 # Default target
 build: $(FUNCTIONS)
@@ -18,6 +18,7 @@ chat: chatf
 bots: botsf
 knowledge: knowledgef
 websocket: websocketf
+websocket-auth: websocket-authf
 tools: toolsf
 vault: vaultf
 
@@ -52,6 +53,11 @@ vaultf:
 	cd cmd/functions/vault && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GOFLAGS) $(LDFLAGS) -o ../../../$(LAMBDA_DIR)/vault/bootstrap ./main.go
 	chmod +x $(LAMBDA_DIR)/vault/bootstrap
 
+websocket-authf:
+	mkdir -p $(LAMBDA_DIR)/websocket-auth
+	cd cmd/functions/websocket-auth && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GOFLAGS) $(LDFLAGS) -o ../../../$(LAMBDA_DIR)/websocket-auth/bootstrap ./main.go
+	chmod +x $(LAMBDA_DIR)/websocket-auth/bootstrap
+
 # Run tests
 test:
 	go test -v ./...
@@ -62,5 +68,6 @@ clean:
 	rm -f $(LAMBDA_DIR)/bots/bootstrap
 	rm -f $(LAMBDA_DIR)/knowledge/bootstrap
 	rm -f $(LAMBDA_DIR)/websocket/bootstrap
+	rm -f $(LAMBDA_DIR)/websocket-auth/bootstrap
 	rm -f $(LAMBDA_DIR)/tools/bootstrap
 	rm -f $(LAMBDA_DIR)/vault/bootstrap

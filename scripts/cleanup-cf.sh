@@ -8,7 +8,7 @@ function display_usage {
     echo ""
     echo "Options:"
     echo "  -e, --environment ENV   Environment to clean (dev, prod) [default: dev]"
-    echo "  -r, --region REGION     AWS region [defaults to us-east-1]"
+    echo "  -r, --region REGION     AWS region [defaults to us-west-2]"
     echo "  -f, --force             Skip confirmation prompt"
     echo "  -h, --help              Display this help message"
     echo ""
@@ -16,7 +16,7 @@ function display_usage {
 
 # Set default values
 ENVIRONMENT="dev"
-REGION="us-east-1"
+REGION="us-west-2"
 FORCE=false
 
 # Parse command-line arguments

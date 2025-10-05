@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2';
+import * as apigatewayv2authorizers from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import * as integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
@@ -36,6 +37,19 @@ export class ApiStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
     
+    // Create CloudWatch Logs role for API Gateway (required for logging)
+    const apiGatewayLogsRole = new iam.Role(this, 'ApiGatewayLogsRole', {
+      assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonAPIGatewayPushToCloudWatchLogs'),
+      ],
+    });
+
+    // Set the CloudWatch Logs role for API Gateway (only needs to be done once per region)
+    const cfnAccount = new apigateway.CfnAccount(this, 'ApiGatewayAccount', {
+      cloudWatchRoleArn: apiGatewayLogsRole.roleArn,
+    });
+
     // Create REST API Gateway
     this.apiGateway = new apigateway.RestApi(this, 'RestApi', {
       restApiName: `${props.config.prefix}API`,
@@ -62,6 +76,9 @@ export class ApiStack extends cdk.Stack {
         metricsEnabled: true,
       },
     });
+
+    // Ensure the API Gateway account config is created before the API
+    this.apiGateway.node.addDependency(cfnAccount);
     
     // Create authorizer
     const authorizer = new apigateway.CognitoUserPoolsAuthorizer(this, 'ApiAuthorizer', {
@@ -171,6 +188,7 @@ export class ApiStack extends cdk.Stack {
     });
     
     // Interface VPC Endpoints (paid) - Add more comprehensive coverage
+    // Note: IAM is a global service and does not support VPC endpoints
     const interfaceEndpoints = [
       { name: 'Bedrock', service: ec2.InterfaceVpcEndpointAwsService.BEDROCK_RUNTIME },
       { name: 'BedrockAgent', service: ec2.InterfaceVpcEndpointAwsService.BEDROCK_AGENT },
@@ -179,7 +197,6 @@ export class ApiStack extends cdk.Stack {
       { name: 'SecretsManager', service: ec2.InterfaceVpcEndpointAwsService.SECRETS_MANAGER },
       { name: 'CloudWatchLogs', service: ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS },
       { name: 'Lambda', service: ec2.InterfaceVpcEndpointAwsService.LAMBDA },
-      { name: 'IAM', service: ec2.InterfaceVpcEndpointAwsService.IAM },
       { name: 'STS', service: ec2.InterfaceVpcEndpointAwsService.STS },
     ];
     
@@ -418,22 +435,59 @@ export class ApiStack extends cdk.Stack {
     vaultKeyResource.addMethod('DELETE', new apigateway.LambdaIntegration(vaultLambda), {
       authorizer,
     });
-    
+
+    // WebSocket Lambda Authorizer
+    // Security: Validates Cognito JWT tokens for WebSocket connections
+    // Reference: AppSec vulnerability ticket V1796596356
+    // This authorizer protects WebSocket connections by validating JWT tokens from query parameters
+    const websocketAuthorizerFunction = new lambda.Function(this, 'WebSocketAuthorizerFunction', {
+      runtime: lambda.Runtime.PROVIDED_AL2023,
+      architecture: lambda.Architecture.ARM_64,
+      handler: 'bootstrap',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../lambda/functions/websocket-auth')),
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(5),
+      environment: {
+        USER_POOL_ID: props.userPool.userPoolId,
+        USER_POOL_CLIENT_ID: props.userPoolClient.userPoolClientId,
+      },
+      role: lambdaRole,
+      logRetention: logs.RetentionDays.ONE_WEEK,
+    });
+
+    // WebSocket authorizer configuration
+    // Extracts JWT token from 'token' query string parameter
+    const websocketAuthorizer = new apigatewayv2authorizers.WebSocketLambdaAuthorizer(
+      'WebSocketAuthorizer',
+      websocketAuthorizerFunction,
+      {
+        identitySource: ['route.request.querystring.token'],
+      }
+    );
+
     // Create WebSocket API for streaming
     const connectHandler = this.createLambdaFunction('WebSocketConnectFunction', 'websocket', props, lambdaRole, 'connect');
     const disconnectHandler = this.createLambdaFunction('WebSocketDisconnectFunction', 'websocket', props, lambdaRole, 'disconnect');
     const defaultHandler = this.createLambdaFunction('WebSocketDefaultFunction', 'websocket', props, lambdaRole, 'default');
-    
+
+    // WebSocket API with authorization on connect route only
+    // Security: Authorization is required only on $connect route as per AWS requirements
+    // Once connected, the connection is authenticated and no further authorization is needed
+    // $disconnect and $default routes do not require authorization
+    // Reference: AppSec vulnerability ticket V1796596356
     this.websocket = new apigatewayv2.WebSocketApi(this, 'WebSocketApi', {
       apiName: `${props.config.prefix}WebSocketAPI`,
       connectRouteOptions: {
         integration: new integrations.WebSocketLambdaIntegration('ConnectIntegration', connectHandler),
+        authorizer: websocketAuthorizer,
       },
       disconnectRouteOptions: {
         integration: new integrations.WebSocketLambdaIntegration('DisconnectIntegration', disconnectHandler),
+        // No authorizer needed - connection already authenticated
       },
       defaultRouteOptions: {
         integration: new integrations.WebSocketLambdaIntegration('DefaultIntegration', defaultHandler),
+        // No authorizer needed - connection already authenticated at $connect
       },
     });
     

@@ -43,7 +43,7 @@ type DatabaseConfig struct {
 // NewConfig creates a new configuration instance from environment variables
 func NewConfig() *Config {
 	return &Config{
-		AWSRegion:       getEnv("AWS_REGION", "us-east-1"),
+		AWSRegion:       getEnv("AWS_REGION", "us-west-2"),
 		DynamoDBTable:   getEnv("DYNAMODB_TABLE", ""),
 		S3BucketName:    getEnv("S3_BUCKET_NAME", ""),
 		SQSQueueURL:     getEnv("SQS_QUEUE_URL", ""),

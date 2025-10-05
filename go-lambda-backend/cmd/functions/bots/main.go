@@ -42,7 +42,7 @@ func init() {
 	// Initialize AWS SDK (Lambda provides AWS_REGION by default)
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
-		region = "us-east-1" // Fallback (should never happen in Lambda)
+		region = "us-west-2" // Fallback (should never happen in Lambda)
 		log.Printf("⚠️ AWS_REGION not set, defaulting to: %s", region)
 	}
 	

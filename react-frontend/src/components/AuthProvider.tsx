@@ -121,11 +121,11 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
     
     try {
       // Attempting sign in
-      const { isSignedIn } = await signIn({ 
-        username: email, 
+      const { isSignedIn } = await signIn({
+        username: email,
         password,
         options: {
-          authFlowType: 'USER_SRP_AUTH'
+          authFlowType: 'USER_PASSWORD_AUTH'
         }
       });
       

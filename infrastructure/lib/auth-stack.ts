@@ -50,7 +50,7 @@ export class AuthStack extends cdk.Stack {
     // Step 2: Create user pool with both triggers
     this.userPool = new cognito.UserPool(this, 'UserPool', {
       userPoolName: `${props.config.prefix}UserPool`,
-      selfSignUpEnabled: true,
+      selfSignUpEnabled: false, // Disabled: Only admin can create users
       signInAliases: {
         email: true,
       },
