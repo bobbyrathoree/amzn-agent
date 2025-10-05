@@ -1,8 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Check, 
+  X, 
+  FileText, 
+  Settings, 
+  Eye, 
+  Sparkles,
+  Plus,
+  BookOpen
+} from 'lucide-react';
 import { useAuth } from '../components/AuthProvider';
 import { useApiClient } from '../lib/api';
 import { BotToolsSelector } from '../components/BotToolsSelector';
+import { ThemeToggle } from '../components/ThemeToggle';
 import { initializeTools } from '../tools';
 import type { 
   CreateBotRequest, 
@@ -314,87 +326,208 @@ export function BotCreatePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <Link to="/" className="text-xl font-bold text-gray-900">
-                AI Chat Platform
+    <div className="min-h-screen bg-background relative overflow-hidden">
+      {/* Animated Background */}
+      <div className="fixed inset-0 -z-10">
+        <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-background/95" />
+        {Array.from({ length: 6 }, (_, i) => (
+          <motion.div
+            key={i}
+            className="absolute w-2 h-2 bg-primary/20 rounded-full"
+            initial={{
+              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1200),
+              y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 800),
+            }}
+            animate={{
+              x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1200),
+              y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 800),
+            }}
+            transition={{
+              duration: 25 + Math.random() * 20,
+              repeat: Infinity,
+              repeatType: "reverse",
+              ease: "linear",
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Modern Header */}
+      <motion.header 
+        className="glass-card border-b border-border/50 relative z-10"
+        initial={{ y: -100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.8 }}
+      >
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-20">
+            <motion.div 
+              className="flex items-center space-x-6"
+              initial={{ opacity: 0, x: -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+            >
+              <Link 
+                to="/" 
+                className="flex items-center gap-3 text-2xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent hover:from-primary/80 hover:to-primary/90 transition-all duration-300"
+              >
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-white" />
+                </div>
+                Foundry
               </Link>
-              <span className="text-gray-500">|</span>
-              <Link to="/bots" className="text-gray-700 hover:text-gray-900">
+              <div className="h-8 w-px bg-border/50" />
+              <GlassCard 
+                as={Link} 
+                to="/bots" 
+                className="px-3 py-2 text-sm font-medium text-muted-foreground hover:text-primary transition-all duration-300 hover-lift"
+              >
                 Bots
-              </Link>
-              <span className="text-gray-500">|</span>
-              <span className="text-gray-700">Create Bot</span>
-            </div>
-            <div>
-              <span className="text-sm text-gray-700 mr-4">Welcome, {user.username}</span>
-              <button
+              </GlassCard>
+              <div className="flex items-center gap-2 text-foreground font-semibold">
+                <Plus className="w-4 h-4" />
+                Create Bot
+              </div>
+            </motion.div>
+            
+            <motion.div 
+              className="flex items-center space-x-4"
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8, delay: 0.4 }}
+            >
+              <span className="text-sm text-muted-foreground font-medium">Welcome, {user.username}</span>
+              <ThemeToggle />
+              <GlassCard
+                as={motion.button}
                 onClick={signOut}
-                className="bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-700 transition-colors"
+                className="px-4 py-2 text-sm font-medium text-foreground hover:text-primary transition-all duration-300 hover-lift"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
               >
                 Sign Out
-              </button>
-            </div>
+              </GlassCard>
+            </motion.div>
           </div>
         </div>
-      </header>
+      </motion.header>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow-md p-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-8">Create New Bot</h1>
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
+        <motion.div 
+          className="glass-card p-8 md:p-12"
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.6 }}
+        >
+          <motion.div
+            className="text-center mb-12"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.8 }}
+          >
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent mb-4">
+              Create New Bot
+            </h1>
+            <p className="text-muted-foreground text-lg">
+              Build your AI assistant with custom knowledge and capabilities
+            </p>
+          </motion.div>
 
-          {/* Progress Steps */}
-          <div className="flex items-center justify-center mb-8">
-            {[1, 2, 3, 4].map((step) => (
-              <div key={step} className="flex items-center">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                    step <= currentStep
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-200 text-gray-600'
-                  }`}
-                >
-                  {step}
+          {/* Modern Progress Steps */}
+          <motion.div 
+            className="flex items-center justify-center mb-12"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, delay: 1.0 }}
+          >
+            {[
+              { num: 1, label: 'Basic Info', icon: FileText },
+              { num: 2, label: 'Knowledge Base', icon: BookOpen },
+              { num: 3, label: 'Configuration', icon: Settings },
+              { num: 4, label: 'Review', icon: Eye }
+            ].map((step, index) => {
+              const Icon = step.icon;
+              const isActive = step.num === currentStep;
+              const isCompleted = step.num < currentStep;
+              // const isUpcoming = step.num > currentStep;
+              
+              return (
+                <div key={step.num} className="flex items-center">
+                  <motion.div
+                    className="flex flex-col items-center"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: 1.2 + index * 0.1 }}
+                  >
+                    <motion.div
+                      as={GlassCard}
+                      className={`relative w-12 h-12 rounded-xl flex items-center justify-center text-sm font-semibold transition-all duration-300 ${
+                        isCompleted
+                          ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg'
+                          : isActive
+                          ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg'
+                          : 'text-muted-foreground'
+                      }`}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      {isCompleted ? (
+                        <Check className="w-5 h-5" />
+                      ) : (
+                        <Icon className="w-5 h-5" />
+                      )}
+                      
+                      {isActive && (
+                        <motion.div
+                          className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/20 to-purple-600/20"
+                          animate={{ scale: [1, 1.2, 1] }}
+                          transition={{ duration: 2, repeat: Infinity }}
+                        />
+                      )}
+                    </motion.div>
+                    
+                    <span className={`mt-3 text-xs font-medium transition-colors ${
+                      isActive ? 'text-primary' : isCompleted ? 'text-green-400' : 'text-muted-foreground'
+                    }`}>
+                      {step.label}
+                    </span>
+                  </motion.div>
+                  
+                  {step.num < 4 && (
+                    <motion.div
+                      className={`w-20 h-1 mx-4 rounded-full transition-all duration-500 ${
+                        isCompleted ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-border/30'
+                      }`}
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: 1 }}
+                      transition={{ duration: 0.5, delay: 1.4 + index * 0.1 }}
+                    />
+                  )}
                 </div>
-                {step < 4 && (
-                  <div
-                    className={`w-16 h-1 mx-2 ${
-                      step < currentStep ? 'bg-blue-600' : 'bg-gray-200'
-                    }`}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
+              );
+            })}
+          </motion.div>
 
-          {/* Step Labels */}
-          <div className="flex justify-center mb-8">
-            <div className="flex space-x-8 text-sm text-gray-600">
-              <span className={currentStep === 1 ? 'font-medium text-blue-600' : ''}>
-                Basic Info
-              </span>
-              <span className={currentStep === 2 ? 'font-medium text-blue-600' : ''}>
-                Knowledge Base
-              </span>
-              <span className={currentStep === 3 ? 'font-medium text-blue-600' : ''}>
-                Configuration
-              </span>
-              <span className={currentStep === 4 ? 'font-medium text-blue-600' : ''}>
-                Review
-              </span>
-            </div>
-          </div>
-
-          {error && (
-            <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
-              {error}
-            </div>
-          )}
+          {/* Error State */}
+          <AnimatePresence>
+            {error && (
+              <motion.div 
+                className="mb-8 glass-card border border-red-400/30 bg-red-500/10 p-4"
+                initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                transition={{ duration: 0.3 }}
+              >
+                <div className="flex items-center gap-3 text-red-400">
+                  <div className="w-8 h-8 rounded-full bg-red-400/20 flex items-center justify-center">
+                    <X className="w-5 h-5" />
+                  </div>
+                  <div className="font-medium">{error}</div>
+                </div>
+              </GlassCard>
+            )}
+          </AnimatePresence>
 
           {/* Step Content */}
           <div className="space-y-6">
@@ -402,54 +535,58 @@ export function BotCreatePage() {
             {currentStep === 1 && (
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     Bot Name *
                   </label>
-                  <input
+                  <GlassCard
+                    as="input"
                     type="text"
                     value={formData.title}
                     onChange={(e) => handleInputChange('title', e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 text-foreground placeholder-muted-foreground/60 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base"
                     placeholder="Enter bot name"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     Description
                   </label>
-                  <textarea
+                  <GlassCard
+                    as="textarea"
                     value={formData.description}
                     onChange={(e) => handleInputChange('description', e.target.value)}
                     rows={3}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 text-foreground placeholder-muted-foreground/60 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base resize-none"
                     placeholder="Brief description of what this bot does"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     System Instructions *
                   </label>
-                  <textarea
+                  <GlassCard
+                    as="textarea"
                     value={formData.instruction}
                     onChange={(e) => handleInputChange('instruction', e.target.value)}
                     rows={6}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 text-foreground placeholder-muted-foreground/60 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base resize-none"
                     placeholder="Detailed instructions for how the bot should behave..."
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-semibold text-foreground mb-3">
                     Sharing
                   </label>
-                  <select
+                  <GlassCard
+                    as="select"
                     value={formData.sharedScope}
                     onChange={(e) => handleInputChange('sharedScope', e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 text-foreground focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base"
                   >
                     <option value="private">Private (only you)</option>
                     <option value="partial">Shared (specific users/groups)</option>
@@ -463,7 +600,7 @@ export function BotCreatePage() {
             {currentStep === 2 && (
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-4">
+                  <label className="block text-sm font-semibold text-foreground mb-4">
                     Knowledge Base Options
                   </label>
                   <div className="space-y-3">
@@ -476,7 +613,7 @@ export function BotCreatePage() {
                         onChange={(e) => setKnowledgeBaseOption(e.target.value as 'none')}
                         className="mr-3"
                       />
-                      <span>No Knowledge Base (general AI assistant)</span>
+                      <span className="text-foreground">No Knowledge Base (general AI assistant)</span>
                     </label>
                     
                     <label className="flex items-center">
@@ -488,7 +625,7 @@ export function BotCreatePage() {
                         onChange={(e) => setKnowledgeBaseOption(e.target.value as 'existing')}
                         className="mr-3"
                       />
-                      <span>Use Existing Knowledge Base</span>
+                      <span className="text-foreground">Use Existing Knowledge Base</span>
                     </label>
                     
                     <label className="flex items-center">
@@ -500,7 +637,7 @@ export function BotCreatePage() {
                         onChange={(e) => setKnowledgeBaseOption(e.target.value as 'new')}
                         className="mr-3"
                       />
-                      <span>Create New Knowledge Base</span>
+                      <span className="text-foreground">Create New Knowledge Base</span>
                     </label>
                   </div>
                 </div>
@@ -508,13 +645,13 @@ export function BotCreatePage() {
                 {knowledgeBaseOption === 'existing' && (
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-medium text-gray-700">
+                      <label className="block text-sm font-semibold text-foreground">
                         Select Knowledge Base
                       </label>
                       <button
                         type="button"
                         onClick={loadExistingKnowledgeBases}
-                        className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
+                        className="text-sm text-primary hover:text-primary/80 flex items-center"
                         disabled={loading}
                       >
                         <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -523,10 +660,11 @@ export function BotCreatePage() {
                         Refresh
                       </button>
                     </div>
-                    <select
+                    <GlassCard
+                      as="select"
                       value={formData.existingKnowledgeBaseId || ''}
                       onChange={(e) => handleInputChange('existingKnowledgeBaseId', e.target.value)}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-3 text-foreground focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base"
                     >
                       <option value="">
                         {existingKBs.length === 0 ? 'No Knowledge Bases available' : 'Select a Knowledge Base'}
@@ -538,7 +676,7 @@ export function BotCreatePage() {
                       ))}
                     </select>
                     {existingKBs.length === 0 && (
-                      <p className="text-sm text-gray-500 mt-1">
+                      <p className="text-sm text-muted-foreground mt-1">
                         No Knowledge Bases found. Create one in the AWS Bedrock console first.
                       </p>
                     )}
@@ -548,10 +686,10 @@ export function BotCreatePage() {
                 {knowledgeBaseOption === 'new' && (
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-semibold text-foreground mb-3">
                         Upload Documents
                       </label>
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                      <div className="border-2 border-dashed border-border/50 rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
                         <input
                           type="file"
                           multiple
@@ -562,17 +700,17 @@ export function BotCreatePage() {
                         />
                         <label
                           htmlFor="file-upload"
-                          className="cursor-pointer inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                          className="cursor-pointer inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-md hover:from-blue-600 hover:to-purple-700 transition-all duration-300 hover-lift"
                         >
                           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                           </svg>
                           Choose Files
                         </label>
-                        <p className="mt-2 text-sm text-gray-500">
+                        <p className="mt-2 text-sm text-muted-foreground">
                           Drag and drop files here, or click to select files
                         </p>
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="text-xs text-muted-foreground/70 mt-1">
                           Supports PDF, DOC, DOCX, TXT, MD (max 10MB each)
                         </p>
                       </div>
@@ -582,14 +720,14 @@ export function BotCreatePage() {
                     {Object.keys(uploadProgress).length > 0 && (
                       <div className="space-y-2">
                         {Object.entries(uploadProgress).map(([fileName, progress]) => (
-                          <div key={fileName} className="bg-gray-50 p-3 rounded">
-                            <div className="flex justify-between text-sm mb-1">
+                          <div key={fileName} className="glass-card p-3 rounded">
+                            <div className="flex justify-between text-sm mb-1 text-foreground">
                               <span>{fileName}</span>
                               <span>{progress}%</span>
                             </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div className="w-full bg-muted/30 rounded-full h-2">
                               <div
-                                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-300"
                                 style={{ width: `${progress}%` }}
                               />
                             </div>
@@ -601,27 +739,27 @@ export function BotCreatePage() {
                     {/* Uploaded Documents */}
                     {uploadedDocuments.length > 0 && (
                       <div>
-                        <h4 className="text-sm font-medium text-gray-700 mb-2">
+                        <h4 className="text-sm font-semibold text-foreground mb-2">
                           Uploaded Documents ({uploadedDocuments.length})
                         </h4>
                         <div className="space-y-2">
                           {uploadedDocuments.map((doc, index) => (
-                            <div key={index} className="flex items-center justify-between bg-green-50 p-3 rounded border border-green-200">
+                            <div key={index} className="flex items-center justify-between glass-card p-3 rounded border border-green-500/30 bg-green-500/10">
                               <div>
-                                <span className="text-sm font-medium text-green-800">{doc.fileName}</span>
-                                <span className="text-xs text-green-600 ml-2">
+                                <span className="text-sm font-medium text-green-400">{doc.fileName}</span>
+                                <span className="text-xs text-green-400/80 ml-2">
                                   ({(doc.size / 1024 / 1024).toFixed(2)} MB)
                                 </span>
                               </div>
                               <button
                                 onClick={() => setUploadedDocuments(prev => prev.filter((_, i) => i !== index))}
-                                className="text-red-600 hover:text-red-800"
+                                className="text-red-400 hover:text-red-300 transition-colors"
                               >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                               </button>
-                            </div>
+                            </GlassCard>
                           ))}
                         </div>
                       </div>
@@ -635,13 +773,14 @@ export function BotCreatePage() {
             {currentStep === 3 && (
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-semibold text-foreground mb-2">
                     AI Models
                   </label>
-                  <select
+                  <GlassCard
+                    as="select"
                     value={formData.activeModels[0] || ''}
                     onChange={(e) => handleInputChange('activeModels', [e.target.value])}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 text-foreground focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base"
                   >
                     {availableModels.map((model) => (
                       <option key={model.id} value={model.id}>
@@ -658,26 +797,28 @@ export function BotCreatePage() {
                 />
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-semibold text-foreground mb-2">
                     Conversation Starters
                   </label>
                   <div className="space-y-3">
                     {formData.conversationStarters.map((starter, index) => (
                       <div key={index} className="flex gap-3 items-start">
                         <div className="flex-1 space-y-2">
-                          <input
+                          <GlassCard
+                            as="input"
                             type="text"
                             placeholder="Title"
                             value={starter.title}
                             onChange={(e) => updateConversationStarter(index, 'title', e.target.value)}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-4 py-3 text-foreground placeholder-muted-foreground/60 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-sm"
                           />
-                          <input
+                          <GlassCard
+                            as="input"
                             type="text"
                             placeholder="Example message"
                             value={starter.example}
                             onChange={(e) => updateConversationStarter(index, 'example', e.target.value)}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full px-4 py-3 text-foreground placeholder-muted-foreground/60 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-sm"
                           />
                         </div>
                         <button
@@ -693,7 +834,7 @@ export function BotCreatePage() {
                     
                     <button
                       onClick={addConversationStarter}
-                      className="flex items-center text-sm text-blue-600 hover:text-blue-800"
+                      className="flex items-center text-sm text-primary hover:text-primary/80 transition-colors duration-300"
                     >
                       <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -705,7 +846,7 @@ export function BotCreatePage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-semibold text-foreground mb-2">
                       Temperature
                     </label>
                     <input
@@ -715,53 +856,54 @@ export function BotCreatePage() {
                       step="0.1"
                       value={formData.generationParams.temperature}
                       onChange={(e) => handleNestedInputChange('generationParams', 'temperature', parseFloat(e.target.value))}
-                      className="w-full"
+                      className="w-full accent-primary"
                     />
-                    <div className="text-xs text-gray-500 mt-1">
+                    <div className="text-xs text-muted-foreground mt-1">
                       {formData.generationParams.temperature} (0 = focused, 1 = creative)
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-semibold text-foreground mb-2">
                       Max Tokens
                     </label>
-                    <input
+                    <GlassCard
+                      as="input"
                       type="number"
                       min="100"
                       max="4000"
                       value={formData.generationParams.maxTokens}
                       onChange={(e) => handleNestedInputChange('generationParams', 'maxTokens', parseInt(e.target.value))}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-3 text-foreground focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base"
                     />
                   </div>
                 </div>
 
                 {/* Guardrails Section */}
-                <div className="mt-6 p-6 bg-gray-50 rounded-lg">
+                <div className="mt-6 p-6 glass-card border border-border/30 rounded-lg">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-medium text-gray-900">Content Safety Guardrails</h3>
+                    <h3 className="text-lg font-semibold text-foreground">Content Safety Guardrails</h3>
                     <label className="flex items-center">
                       <input
                         type="checkbox"
                         checked={guardrailsEnabled}
                         onChange={(e) => setGuardrailsEnabled(e.target.checked)}
-                        className="mr-2"
+                        className="mr-2 accent-primary"
                       />
-                      <span className="text-sm text-gray-700">Enable Content Filtering</span>
+                      <span className="text-sm text-foreground">Enable Content Filtering</span>
                     </label>
                   </div>
                   
                   {guardrailsEnabled && (
                     <div className="space-y-4">
-                      <p className="text-sm text-gray-600 mb-4">
+                      <p className="text-sm text-muted-foreground mb-4">
                         Set thresholds for content filtering. Higher values are more restrictive (0 = off, 1 = maximum filtering).
                       </p>
                       
                       {/* Harmful Categories */}
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <label className="block text-sm font-semibold text-foreground mb-2">
                             Violence: {violenceThreshold.toFixed(1)}
                           </label>
                           <input
@@ -771,15 +913,15 @@ export function BotCreatePage() {
                             step="0.1"
                             value={violenceThreshold}
                             onChange={(e) => setViolenceThreshold(parseFloat(e.target.value))}
-                            className="w-full"
+                            className="w-full accent-primary"
                           />
-                          <div className="text-xs text-gray-500 mt-1">
+                          <div className="text-xs text-muted-foreground mt-1">
                             Filter violent content and imagery
                           </div>
                         </div>
 
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <label className="block text-sm font-semibold text-foreground mb-2">
                             Sexual: {sexualThreshold.toFixed(1)}
                           </label>
                           <input
@@ -789,15 +931,15 @@ export function BotCreatePage() {
                             step="0.1"
                             value={sexualThreshold}
                             onChange={(e) => setSexualThreshold(parseFloat(e.target.value))}
-                            className="w-full"
+                            className="w-full accent-primary"
                           />
-                          <div className="text-xs text-gray-500 mt-1">
+                          <div className="text-xs text-muted-foreground mt-1">
                             Filter sexual content and imagery
                           </div>
                         </div>
 
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <label className="block text-sm font-semibold text-foreground mb-2">
                             Hate: {hateThreshold.toFixed(1)}
                           </label>
                           <input
@@ -807,15 +949,15 @@ export function BotCreatePage() {
                             step="0.1"
                             value={hateThreshold}
                             onChange={(e) => setHateThreshold(parseFloat(e.target.value))}
-                            className="w-full"
+                            className="w-full accent-primary"
                           />
-                          <div className="text-xs text-gray-500 mt-1">
+                          <div className="text-xs text-muted-foreground mt-1">
                             Filter hate speech and discriminatory content
                           </div>
                         </div>
 
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <label className="block text-sm font-semibold text-foreground mb-2">
                             Insults: {insultsThreshold.toFixed(1)}
                           </label>
                           <input
@@ -825,15 +967,15 @@ export function BotCreatePage() {
                             step="0.1"
                             value={insultsThreshold}
                             onChange={(e) => setInsultsThreshold(parseFloat(e.target.value))}
-                            className="w-full"
+                            className="w-full accent-primary"
                           />
-                          <div className="text-xs text-gray-500 mt-1">
+                          <div className="text-xs text-muted-foreground mt-1">
                             Filter insults and harassment
                           </div>
                         </div>
 
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <label className="block text-sm font-semibold text-foreground mb-2">
                             Misconduct: {misconductThreshold.toFixed(1)}
                           </label>
                           <input
@@ -843,20 +985,20 @@ export function BotCreatePage() {
                             step="0.1"
                             value={misconductThreshold}
                             onChange={(e) => setMisconductThreshold(parseFloat(e.target.value))}
-                            className="w-full"
+                            className="w-full accent-primary"
                           />
-                          <div className="text-xs text-gray-500 mt-1">
+                          <div className="text-xs text-muted-foreground mt-1">
                             Filter illegal activities and misconduct
                           </div>
                         </div>
                       </div>
 
                       {/* Contextual Grounding */}
-                      <div className="mt-6 pt-4 border-t border-gray-200">
-                        <h4 className="text-md font-medium text-gray-800 mb-3">Contextual Grounding</h4>
+                      <div className="mt-6 pt-4 border-t border-border">
+                        <h4 className="text-md font-semibold text-foreground mb-3">Contextual Grounding</h4>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                            <label className="block text-sm font-semibold text-foreground mb-2">
                               Grounding: {groundingThreshold.toFixed(1)}
                             </label>
                             <input
@@ -866,15 +1008,15 @@ export function BotCreatePage() {
                               step="0.1"
                               value={groundingThreshold}
                               onChange={(e) => setGroundingThreshold(parseFloat(e.target.value))}
-                              className="w-full"
+                              className="w-full accent-primary"
                             />
-                            <div className="text-xs text-gray-500 mt-1">
+                            <div className="text-xs text-muted-foreground mt-1">
                               Ensure responses are grounded in provided context
                             </div>
                           </div>
 
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                            <label className="block text-sm font-semibold text-foreground mb-2">
                               Relevance: {relevanceThreshold.toFixed(1)}
                             </label>
                             <input
@@ -884,9 +1026,9 @@ export function BotCreatePage() {
                               step="0.1"
                               value={relevanceThreshold}
                               onChange={(e) => setRelevanceThreshold(parseFloat(e.target.value))}
-                              className="w-full"
+                              className="w-full accent-primary"
                             />
-                            <div className="text-xs text-gray-500 mt-1">
+                            <div className="text-xs text-muted-foreground mt-1">
                               Ensure responses are relevant to the query
                             </div>
                           </div>
@@ -894,35 +1036,35 @@ export function BotCreatePage() {
                       </div>
                     </div>
                   )}
-                </div>
+                </GlassCard>
               </div>
             )}
 
             {/* Step 4: Review */}
             {currentStep === 4 && (
               <div className="space-y-6">
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Review Your Bot</h3>
+                <div className="glass-card p-6 rounded-lg border border-border/30">
+                  <h3 className="text-lg font-semibold text-foreground mb-4">Review Your Bot</h3>
                   
                   <div className="space-y-4">
                     <div>
-                      <span className="font-medium text-gray-700">Name:</span>
-                      <span className="ml-2">{formData.title}</span>
+                      <span className="font-semibold text-foreground">Name:</span>
+                      <span className="ml-2 text-foreground">{formData.title}</span>
                     </div>
                     
                     <div>
-                      <span className="font-medium text-gray-700">Description:</span>
-                      <span className="ml-2">{formData.description || 'None'}</span>
+                      <span className="font-semibold text-foreground">Description:</span>
+                      <span className="ml-2 text-muted-foreground">{formData.description || 'None'}</span>
                     </div>
                     
                     <div>
-                      <span className="font-medium text-gray-700">Sharing:</span>
-                      <span className="ml-2 capitalize">{formData.sharedScope}</span>
+                      <span className="font-semibold text-foreground">Sharing:</span>
+                      <span className="ml-2 capitalize text-muted-foreground">{formData.sharedScope}</span>
                     </div>
                     
                     <div>
-                      <span className="font-medium text-gray-700">Knowledge Base:</span>
-                      <span className="ml-2">
+                      <span className="font-semibold text-foreground">Knowledge Base:</span>
+                      <span className="ml-2 text-muted-foreground">
                         {knowledgeBaseOption === 'none' && 'None'}
                         {knowledgeBaseOption === 'existing' && `Existing KB: ${formData.existingKnowledgeBaseId}`}
                         {knowledgeBaseOption === 'new' && `New KB with ${uploadedDocuments.length} documents`}
@@ -930,8 +1072,8 @@ export function BotCreatePage() {
                     </div>
                     
                     <div>
-                      <span className="font-medium text-gray-700">Model:</span>
-                      <span className="ml-2">
+                      <span className="font-semibold text-foreground">Model:</span>
+                      <span className="ml-2 text-muted-foreground">
                         {formData.activeModels[0] 
                           ? availableModels.find(m => m.id === formData.activeModels[0])?.name || formData.activeModels[0]
                           : 'None'
@@ -940,8 +1082,8 @@ export function BotCreatePage() {
                     </div>
                     
                     <div>
-                      <span className="font-medium text-gray-700">Tools:</span>
-                      <span className="ml-2">
+                      <span className="font-semibold text-foreground">Tools:</span>
+                      <span className="ml-2 text-muted-foreground">
                         {formData.agentTools.length === 0 
                           ? 'None' 
                           : formData.agentTools.map(t => t.name).join(', ')
@@ -950,20 +1092,20 @@ export function BotCreatePage() {
                     </div>
                     
                     <div>
-                      <span className="font-medium text-gray-700">Conversation Starters:</span>
-                      <span className="ml-2">{formData.conversationStarters.length}</span>
+                      <span className="font-semibold text-foreground">Conversation Starters:</span>
+                      <span className="ml-2 text-muted-foreground">{formData.conversationStarters.length}</span>
                     </div>
                     
                     <div>
-                      <span className="font-medium text-gray-700">Content Safety:</span>
+                      <span className="font-semibold text-foreground">Content Safety:</span>
                       <span className="ml-2">
                         {guardrailsEnabled ? (
                           <div className="mt-1">
-                            <div className="text-sm text-gray-600">
+                            <div className="text-sm text-muted-foreground">
                               Violence: {violenceThreshold.toFixed(1)}, Sexual: {sexualThreshold.toFixed(1)}, 
                               Hate: {hateThreshold.toFixed(1)}, Insults: {insultsThreshold.toFixed(1)}
                             </div>
-                            <div className="text-sm text-gray-600">
+                            <div className="text-sm text-muted-foreground">
                               Misconduct: {misconductThreshold.toFixed(1)}, Grounding: {groundingThreshold.toFixed(1)}, 
                               Relevance: {relevanceThreshold.toFixed(1)}
                             </div>
@@ -976,18 +1118,18 @@ export function BotCreatePage() {
                   </div>
                 </div>
 
-                <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                <div className="glass-card border border-amber-500/30 bg-amber-500/10 rounded-md p-4">
                   <div className="flex">
                     <div className="flex-shrink-0">
-                      <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                      <svg className="h-5 w-5 text-amber-500" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                       </svg>
                     </div>
                     <div className="ml-3">
-                      <h3 className="text-sm font-medium text-yellow-800">
+                      <h3 className="text-sm font-semibold text-amber-600 dark:text-amber-400">
                         Ready to Create Bot
                       </h3>
-                      <div className="mt-2 text-sm text-yellow-700">
+                      <div className="mt-2 text-sm text-amber-700 dark:text-amber-300">
                         {knowledgeBaseOption === 'new' && (
                           <p>
                             Your bot will be created with a new Knowledge Base. This process may take a few minutes 
@@ -1007,31 +1149,33 @@ export function BotCreatePage() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </GlassCard>
               </div>
             )}
 
             {/* Navigation Buttons */}
             <div className="flex justify-between pt-6 border-t">
-              <button
+              <GlassCard
+                as="button"
                 onClick={prevStep}
                 disabled={currentStep === 1}
-                className={`px-6 py-2 rounded-md text-sm font-medium ${
+                className={`px-6 py-2 rounded-md text-sm font-medium transition-all duration-300 ${
                   currentStep === 1
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                    ? 'opacity-50 cursor-not-allowed text-muted-foreground'
+                    : 'text-foreground hover:bg-muted/30 hover-lift'
                 }`}
               >
                 Previous
-              </button>
+              </GlassCard>
 
               <div className="flex space-x-3">
-                <Link
+                <GlassCard
+                  as={Link}
                   to="/bots"
-                  className="px-6 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="px-6 py-2 border border-border/50 rounded-md text-sm font-medium text-foreground hover:bg-muted/30 transition-all duration-300 hover-lift"
                 >
                   Cancel
-                </Link>
+                </GlassCard>
                 
                 {currentStep < 4 ? (
                   <button
@@ -1040,11 +1184,11 @@ export function BotCreatePage() {
                       (currentStep === 1 && (!formData.title || !formData.instruction)) ||
                       (currentStep === 2 && knowledgeBaseOption === 'existing' && !formData.existingKnowledgeBaseId)
                     }
-                    className={`px-6 py-2 rounded-md text-sm font-medium ${
+                    className={`px-6 py-2 rounded-md text-sm font-medium transition-all duration-300 ${
                       (currentStep === 1 && (!formData.title || !formData.instruction)) ||
                       (currentStep === 2 && knowledgeBaseOption === 'existing' && !formData.existingKnowledgeBaseId)
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                        ? 'glass-card opacity-50 cursor-not-allowed text-muted-foreground'
+                        : 'bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:from-blue-600 hover:to-purple-700 shadow-lg hover:shadow-xl hover-lift'
                     }`}
                   >
                     Next
@@ -1053,10 +1197,10 @@ export function BotCreatePage() {
                   <button
                     onClick={handleSubmit}
                     disabled={loading}
-                    className={`px-6 py-2 rounded-md text-sm font-medium ${
+                    className={`px-6 py-2 rounded-md text-sm font-medium transition-all duration-300 ${
                       loading
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-green-600 text-white hover:bg-green-700'
+                        ? 'glass-card opacity-50 cursor-not-allowed text-muted-foreground'
+                        : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-lg hover:shadow-xl hover-lift'
                     }`}
                   >
                     {loading ? 'Creating Bot...' : 'Create Bot'}
@@ -1065,7 +1209,7 @@ export function BotCreatePage() {
               </div>
             </div>
           </div>
-        </div>
+        </GlassCard>
       </main>
     </div>
   );

@@ -212,7 +212,7 @@ export function BotEditPage() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
               <Link to="/bots" className="text-xl font-bold text-gray-900">
-                AI Chat Platform
+                Foundry
               </Link>
               <span className="text-gray-500">|</span>
               <span className="text-gray-700">Edit Bot</span>

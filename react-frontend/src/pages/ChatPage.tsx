@@ -1,11 +1,28 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  MessageCircle, 
+  Send, 
+  Plus, 
+  Menu, 
+  X, 
+  Bot as BotIcon, 
+  Sparkles, 
+  Trash2,
+  Zap,
+  Brain,
+  Clock,
+  User,
+  RefreshCw
+} from 'lucide-react';
 import { useApiClient, ApiClient } from '../lib/api';
 import { BotToolsPanel } from '../components/BotToolsPanel';
 import { KnowledgeSearchStages } from '../components/KnowledgeSearchStages';
 import { SourceCitations } from '../components/SourceCitations';
 import { ExtendedThinkingToggle } from '../components/ExtendedThinkingToggle';
+import { KnowledgeBaseToggle } from '../components/KnowledgeBaseToggle';
 import { BotSelector } from '../components/BotSelector';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ThemeToggle } from '../components/ThemeToggle';
@@ -34,7 +51,8 @@ import type {
   KnowledgeBaseChunk,
   ToolExecution,
   ToolSkipped,
-  KeyRecommendation
+  KeyRecommendation,
+  ConversationStarter
 } from '../types';
 
 export function ChatPage() {
@@ -138,6 +156,9 @@ export function ChatPage() {
   // Extended thinking state
   const [extendedThinkingEnabled, setExtendedThinkingEnabled] = useState(false);
   const [reasoningParams, setReasoningParams] = useState<ReasoningParams>({ budgetTokens: 1024 });
+  
+  // Knowledge Base toggle state
+  const [knowledgeBaseEnabled, setKnowledgeBaseEnabled] = useState(true);
 
   // Available models for dropdown with extended thinking support
   const availableModels = [
@@ -317,7 +338,13 @@ export function ChatPage() {
       
       // Defensive programming: ensure we always have valid arrays
       setCurrentConversation(data.conversation || null);
-      setMessagesDebug(Array.isArray(data.messages) ? data.messages : []);
+      const validMessages = Array.isArray(data.messages) ? data.messages : [];
+      console.log('Loading conversation messages:', {
+        conversationId,
+        totalMessages: validMessages.length,
+        messageRoles: validMessages.map((m: Message) => ({ id: m.id, role: m.role, hasContent: !!m.content }))
+      });
+      setMessagesDebug(validMessages);
       setSelectedConversationId(conversationId);
       
       // Update session model to match conversation's session model (if any)
@@ -328,9 +355,9 @@ export function ChatPage() {
         setSessionModel(bot.activeModels[0]);
       }
       
-      // Restore sources for this conversation if available
-      // Note: Sources are now persisted per conversation for better UX
-      if (conversationSources[conversationId]) {
+      // FIXED: Only restore sources if we don't have a current response
+      // This prevents old sources from conflicting with new responses
+      if (conversationSources[conversationId] && !lastChatResponse) {
         // Restore the last chat response with sources for this conversation
         setLastChatResponse({ 
           response: '', 
@@ -681,7 +708,8 @@ export function ChatPage() {
         stream: false,
         sessionModelId: sessionModel || undefined,
         enableReasoning: extendedThinkingEnabled && currentModelSupportsReasoning(),
-        reasoningParams: extendedThinkingEnabled ? reasoningParams : undefined
+        reasoningParams: extendedThinkingEnabled ? reasoningParams : undefined,
+        disableKnowledgeBase: !knowledgeBaseEnabled
       };
 
       const response = await apiClient.post(`bots/${botId}/chat`, chatRequest);
@@ -702,6 +730,14 @@ export function ChatPage() {
 
       const chatResponse: ChatResponse = await response.json();
       console.log('Chat response received:', chatResponse);
+      console.log('Chat response details:', {
+        hasResponse: !!chatResponse.response,
+        responseLength: chatResponse.response?.length || 0,
+        hasSources: !!chatResponse.sources,
+        sourcesCount: chatResponse.sources?.length || 0,
+        hasKnowledgeStages: !!chatResponse.knowledgeSearchStages,
+        stagesCount: chatResponse.knowledgeSearchStages?.length || 0
+      });
       
       // 🚀 INGENIOUS ENHANCEMENT: Capture search stages and sources
       if (chatResponse.knowledgeSearchStages) {
@@ -732,19 +768,61 @@ export function ChatPage() {
         setToolResults(chatResponse.toolResults);
       }
       
-      // Reload conversation to get the latest messages (with race condition protection)
-      if (conversationId && lastMessageId === messageId) {
+      // ULTRA-CRITICAL FIX: Display the response immediately to prevent disappearing bug
+      if (conversationId && lastMessageId === messageId && chatResponse.response) {
+        console.log('IMMEDIATE RESPONSE DISPLAY - Adding assistant message directly');
+        
+        // Create the assistant message from the response
+        const assistantMessage: Message = {
+          id: `assistant-${Date.now()}`,
+          conversationId: conversationId,
+          role: 'assistant',
+          content: [{ type: 'text', text: chatResponse.response }],
+          createdAt: new Date(),
+          tokenCount: Math.ceil(chatResponse.response.length / 4)
+        };
+        
+        // Update messages immediately: remove temp user message and add both real user + assistant
+        setMessagesDebug(prev => {
+          const withoutTemp = prev.filter(msg => msg.id !== tempUserMessage.id);
+          const realUserMessage: Message = {
+            ...tempUserMessage,
+            id: `user-${Date.now()}`,
+            conversationId: conversationId
+          };
+          return [...withoutTemp, realUserMessage, assistantMessage];
+        });
+        
+        // Still reload conversation in background to sync with server, but don't wait for it
         try {
-          console.log('Reloading conversation after chat response:', conversationId, 'messageId:', messageId);
-          await loadConversation(conversationId, true); // Force reload after chat
-          console.log('Successfully reloaded conversation for messageId:', messageId);
+          console.log('Background conversation sync:', conversationId, 'messageId:', messageId);
+          setTimeout(() => {
+            loadConversation(conversationId, true);
+          }, 1000); // 1 second delay to ensure server has saved the message
+          console.log('Immediate response display completed for messageId:', messageId);
+          
+          // TITLE GENERATION FIX: Refresh conversation list to pick up title updates
+          // The backend generates titles in background, so we refresh after a short delay
+          setTimeout(() => {
+            console.log('Refreshing conversation list for potential title updates');
+            loadConversations();
+          }, 2000); // 2 second delay to allow backend title generation
         } catch (loadErr) {
-          console.warn('Failed to reload conversation after successful chat, but message was sent:', loadErr);
-          // Don't throw - the message was successfully sent even if we can't reload
-          // Keep the optimistic message in the UI since the chat was successful
+          console.warn('Background conversation sync failed (non-critical):', loadErr);
+          // Non-critical since we already displayed the response immediately
+        }
+      } else if (conversationId && lastMessageId === messageId && !chatResponse.response) {
+        console.log('No response text in chatResponse, falling back to conversation reload');
+        
+        // Fallback for cases where there's no response text (shouldn't happen normally)
+        try {
+          setMessagesDebug(prev => prev.filter(msg => msg.id !== tempUserMessage.id));
+          await loadConversation(conversationId, true);
+        } catch (loadErr) {
+          console.error('Fallback conversation reload failed:', loadErr);
         }
       } else if (lastMessageId !== messageId) {
-        console.log('Skipping conversation reload - newer message in progress:', lastMessageId, 'vs', messageId);
+        console.log('Skipping message processing - newer message in progress:', lastMessageId, 'vs', messageId);
       }
 
     } catch (err) {
@@ -753,6 +831,10 @@ export function ChatPage() {
       
       // Remove the optimistic message on error
       setMessagesDebug(prev => prev.filter(msg => msg.id !== tempUserMessage.id));
+      
+      // Clear any partial response state on error
+      setLastChatResponse(null);
+      setCurrentSearchStages([]);
       
       // Restore the input text so user can retry
       setInput(userMessage);
@@ -764,17 +846,17 @@ export function ChatPage() {
   const renderMessageContent = (content: MessageContent[]) => {
     if (!content) {
       console.warn('renderMessageContent received null/undefined content');
-      return <p className="text-gray-500 italic">No content</p>;
+      return <p className="text-muted-foreground italic">Loading response...</p>;
     }
     
     if (!Array.isArray(content)) {
       console.warn('renderMessageContent received non-array content:', content);
-      return <p className="text-red-500">Invalid message content</p>;
+      return <p className="text-red-400">Invalid message content format</p>;
     }
     
     if (content.length === 0) {
       console.log('renderMessageContent received empty content array');
-      return <p className="text-gray-500 italic">Empty message</p>;
+      return <p className="text-muted-foreground italic">Empty response</p>;
     }
     
     // Determine if dark mode is active
@@ -869,49 +951,114 @@ export function ChatPage() {
   }
 
   return (
-    <div className="h-screen bg-background text-foreground flex">
+    <div className="h-screen bg-background text-foreground flex overflow-hidden">
+      {/* Animated Background */}
+      <div className="fixed inset-0 gradient-mesh opacity-20" />
+      <div className="fixed inset-0">
+        {[...Array(12)].map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute w-1 h-1 bg-primary/20 rounded-full"
+            animate={{
+              x: [0, Math.random() * 30 - 15],
+              y: [0, Math.random() * 30 - 15],
+              scale: [1, Math.random() * 0.5 + 0.5, 1],
+            }}
+            transition={{
+              duration: Math.random() * 20 + 20,
+              repeat: Infinity,
+              ease: "linear",
+            }}
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+            }}
+          />
+        ))}
+      </div>
+
       {/* Conversation Sidebar */}
-      <div className={`bg-card border-r border-border flex flex-col transition-all duration-300 ${
-        sidebarOpen ? 'w-80' : 'w-16'
-      }`}>
-        <div className="p-4 border-b border-border">
+      <motion.div 
+        className={`relative z-10 glass-card border-r border-glass-border flex flex-col transition-all duration-300 ${
+          sidebarOpen ? 'w-80' : 'w-16'
+        }`}
+        initial={{ x: -300, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+      >
+        <div className="p-4 border-b border-border/50">
           <div className="flex items-center justify-between">
-            <button
+            <motion.button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-1 rounded-md hover:bg-gray-100"
+              className="p-2 rounded-xl hover:bg-primary/10 text-muted-foreground hover:text-primary transition-all duration-300 hover-lift"
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            {sidebarOpen && (
-              <div className="flex items-center space-x-2">
-                <h2 className="text-lg font-semibold text-gray-900">Conversations</h2>
-                <button
-                  onClick={handleNewConversationClick}
-                  className="p-1 rounded-md hover:bg-gray-100 text-blue-600"
-                  title="New Conversation"
+              {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </motion.button>
+            
+            <AnimatePresence>
+              {sidebarOpen && (
+                <motion.div 
+                  className="flex items-center space-x-3"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
-              </div>
-            )}
+                  <div className="flex items-center gap-2">
+                    <MessageCircle className="w-5 h-5 text-primary" />
+                    <h2 className="text-lg font-semibold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+                      Conversations
+                    </h2>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <motion.button
+                      onClick={loadConversations}
+                      className="p-2 rounded-xl bg-muted/30 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-all duration-300 hover-lift"
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      title="Refresh conversations (to see updated titles)"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </motion.button>
+                    <motion.button
+                      onClick={handleNewConversationClick}
+                      className="p-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-all duration-300 hover-lift"
+                      whileHover={{ scale: 1.1, rotate: 90 }}
+                      whileTap={{ scale: 0.9 }}
+                      title="New Conversation"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </motion.button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
           
           {/* Bot Selector */}
-          {sidebarOpen && (
-            <div className="mt-3 space-y-3">
-              <BotSelector
-                bots={allBots}
-                currentBot={bot}
-                className=""
-              />
+          <AnimatePresence>
+            {sidebarOpen && (
+              <motion.div 
+                className="mt-4 space-y-4"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                transition={{ duration: 0.3, delay: 0.1 }}
+              >
+                <GlassCard className="p-3 rounded-xl">
+                  <BotSelector
+                    bots={allBots}
+                    currentBot={bot}
+                    className=""
+                  />
+                </GlassCard>
               
-              {/* Bot Tools Panel - NOW WITH CONVERSATION INTEGRATION */}
-              {bot && (
-                <BotToolsPanel
+                {/* Bot Tools Panel - NOW WITH CONVERSATION INTEGRATION */}
+                {bot && (
+                  <GlassCard className="p-3 rounded-xl">
+                    <BotToolsPanel
                   bot={bot}
                   onToolExecute={async (tool, capability, input) => {
                     try {
@@ -984,186 +1131,381 @@ export function ChatPage() {
                   }}
                   getAccessToken={getAccessToken}
                   getUserId={getUserId}
-                  onUpgradeRequest={handleToolUpgradeRequest}
-                  className=""
-                />
-              )}
-            </div>
-          )}
+                    onUpgradeRequest={handleToolUpgradeRequest}
+                    className=""
+                  />
+                  </GlassCard>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {sidebarOpen && (
-          <div className="flex-1 overflow-y-auto">
-            {conversations.length === 0 ? (
-              <div className="p-4 text-center text-gray-500">
-                <p>No conversations yet</p>
-                <button
-                  onClick={handleNewConversationClick}
-                  className="mt-2 text-blue-600 hover:text-blue-700 text-sm"
+        <AnimatePresence>
+          {sidebarOpen && (
+            <motion.div 
+              className="flex-1 overflow-y-auto scrollbar-thin"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3, delay: 0.2 }}
+            >
+              {conversations.length === 0 ? (
+                <motion.div 
+                  className="p-6 text-center"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.3 }}
                 >
-                  Start your first conversation
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-1 p-2">
-                {Array.isArray(conversations) && conversations.map((conv) => (
-                  <div
-                    key={conv.id}
-                    className={`group relative rounded-lg hover:bg-gray-50 transition-colors ${
-                      selectedConversationId === conv.id ? 'bg-blue-50 border border-blue-200' : ''
-                    }`}
-                  >
-                    <button
-                      onClick={() => loadConversation(conv.id)}
-                      className="w-full text-left p-3 pr-10"
+                  <div className="glass-card p-8 rounded-xl">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full glass flex items-center justify-center">
+                      <MessageCircle className="w-8 h-8 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-foreground mb-2">No conversations yet</h3>
+                    <p className="text-muted-foreground text-sm mb-4">Start your first conversation with this AI bot</p>
+                    <motion.button
+                      onClick={handleNewConversationClick}
+                      className="px-4 py-2 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-all duration-300 text-sm font-medium hover-lift"
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
                     >
-                      <div className="font-medium text-gray-900 truncate">{conv.title}</div>
-                      <div className="text-sm text-gray-500 mt-1 flex items-center justify-between">
-                        <span>{conv.messageCount} messages • {new Date(conv.updatedAt).toLocaleDateString()}</span>
-                        {conv.sessionModelId && (
-                          <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                            {availableModels.find(m => m.id === conv.sessionModelId)?.name || 'Custom'}
-                          </span>
-                        )}
-                      </div>
-                      {conv.lastMessage && (
-                        <div className="text-xs text-gray-400 mt-1 truncate">{conv.lastMessage}</div>
-                      )}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm('Are you sure you want to delete this conversation?')) {
-                          deleteConversation(conv.id);
-                        }
-                      }}
-                      className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded-full transition-all"
-                      title="Delete conversation"
-                    >
-                      <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                      Start Conversation
+                    </motion.button>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+                </motion.div>
+              ) : (
+                <div className="space-y-2 p-3">
+                  {Array.isArray(conversations) && conversations.map((conv, index) => (
+                    <motion.div
+                      key={conv.id}
+                      className={`group relative glass-card hover-lift transition-all duration-300 ${
+                        selectedConversationId === conv.id ? 'bg-primary/10 border-primary/30' : ''
+                      }`}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: index * 0.05 }}
+                      whileHover={{ scale: 1.02 }}
+                    >
+                      <button
+                        onClick={() => loadConversation(conv.id)}
+                        className="w-full text-left p-4 pr-12 group-hover:text-primary transition-colors duration-300"
+                      >
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                            <BotIcon className="w-4 h-4 text-white" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-foreground truncate group-hover:text-primary transition-colors duration-300">
+                              {conv.title}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                          <div className="flex items-center gap-1">
+                            <MessageCircle className="w-3 h-3" />
+                            <span>{conv.messageCount} messages</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            <span>{new Date(conv.updatedAt).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                        
+                        {conv.sessionModelId && (
+                          <div className="mb-2">
+                            <span className="bg-primary/20 text-primary text-xs px-2 py-1 rounded-full font-medium">
+                              {availableModels.find(m => m.id === conv.sessionModelId)?.name || 'Custom'}
+                            </span>
+                          </div>
+                        )}
+                        
+                        {conv.lastMessage && (
+                          <div className="text-xs text-muted-foreground/70 truncate leading-relaxed">
+                            {conv.lastMessage}
+                          </div>
+                        )}
+                      </button>
+                      <motion.button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Are you sure you want to delete this conversation?')) {
+                            deleteConversation(conv.id);
+                          }
+                        }}
+                        className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 p-2 hover:bg-red-500/20 text-red-400 hover:text-red-500 rounded-xl transition-all duration-300"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        title="Delete conversation"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </motion.button>
+                    </GlassCard>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </GlassCard>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col relative z-10">
         {/* Header */}
-        <header className="bg-card border-b border-border px-6 py-4">
+        <motion.header 
+          className="glass-card border-b border-border/50 px-6 py-4"
+          initial={{ y: -50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+        >
           <div className="flex justify-between items-center">
             <div className="flex-1">
               {/* Breadcrumbs */}
               <Breadcrumbs items={getBreadcrumbItems()} className="mb-2" />
               
               {bot ? (
-                <div>
-                  <h1 className="text-xl font-semibold text-gray-900">{bot.title}</h1>
-                  <p className="text-sm text-gray-600">{bot.description}</p>
-                  <div className="flex items-center space-x-2 mt-1">
-                    <span className="text-xs text-gray-500">Model:</span>
-                    <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
-                      {getCurrentModelName()}
-                    </span>
-                    {currentModelSupportsReasoning() && (
-                      <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
-                        Extended Thinking Available
+                <motion.div
+                  initial={{ opacity: 0, x: -30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.5, delay: 0.4 }}
+                >
+                  <div className="flex items-center gap-4 mb-2">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                      <BotIcon className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h1 className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+                        {bot.title}
+                      </h1>
+                      <p className="text-sm text-muted-foreground">{bot.description}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-3 h-3 text-primary" />
+                      <span className="text-xs text-muted-foreground">Model:</span>
+                      <span className="text-xs bg-primary/20 text-primary px-3 py-1 rounded-full font-medium">
+                        {getCurrentModelName()}
                       </span>
+                    </div>
+                    {currentModelSupportsReasoning() && (
+                      <motion.span 
+                        className="text-xs bg-purple-500/20 text-purple-400 px-3 py-1 rounded-full font-medium flex items-center gap-1"
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ type: "spring", stiffness: 500, delay: 0.6 }}
+                      >
+                        <Brain className="w-3 h-3" />
+                        Extended Thinking Available
+                      </motion.span>
                     )}
                   </div>
-                </div>
+                </motion.div>
               ) : (
                 <div className="animate-pulse">
-                  <div className="h-4 bg-gray-200 rounded w-32 mb-2"></div>
-                  <div className="h-6 bg-gray-200 rounded w-48 mb-2"></div>
-                  <div className="h-4 bg-gray-200 rounded w-32"></div>
+                  <div className="flex items-center gap-4 mb-2">
+                    <div className="w-10 h-10 bg-muted/30 rounded-xl"></div>
+                    <div>
+                      <div className="h-5 bg-muted/30 rounded w-32 mb-2"></div>
+                      <div className="h-4 bg-muted/20 rounded w-48"></div>
+                    </div>
+                  </div>
+                  <div className="h-4 bg-muted/20 rounded w-32"></div>
                 </div>
               )}
             </div>
-            <div className="flex items-center space-x-4">
+            <motion.div 
+              className="flex items-center space-x-4"
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, delay: 0.6 }}
+            >
               <ThemeToggle />
-              <button
+              <motion.button
                 onClick={signOut}
-                className="bg-secondary text-secondary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
+                className="glass-card px-4 py-2 text-sm font-medium text-foreground hover:text-primary transition-all duration-300 hover-lift"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
               >
                 Sign Out
-              </button>
-            </div>
+              </motion.button>
+            </motion.div>
           </div>
-        </header>
+        </GlassCard>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <motion.div 
+          className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-thin"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.4 }}
+        >
           {!selectedConversationId && messages.length === 0 && (
-            <div className="text-center py-12">
-              <div className="text-gray-400 mb-4">
-                <svg className="mx-auto h-16 w-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Start a conversation</h3>
-              <p className="text-gray-600 mb-4">Ask me anything about {bot?.title || 'this bot'}!</p>
+            <motion.div 
+              className="text-center py-16"
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, delay: 0.6 }}
+            >
+              <motion.div 
+                className="glass-card w-32 h-32 rounded-full mx-auto mb-8 flex items-center justify-center"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ duration: 0.6, delay: 0.8, type: "spring", stiffness: 200 }}
+              >
+                <MessageCircle className="h-16 w-16 text-muted-foreground" />
+              </motion.div>
+              
+              <motion.h3 
+                className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent mb-4"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 1.0 }}
+              >
+                Start a conversation
+              </motion.h3>
+              
+              <motion.p 
+                className="text-muted-foreground text-lg mb-8"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 1.2 }}
+              >
+                Ask me anything about {bot?.title || 'this bot'}!
+              </motion.p>
+              
               {bot?.conversationStarters && bot.conversationStarters.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-sm text-gray-500">Try one of these:</p>
-                  <div className="space-y-2">
-                    {bot.conversationStarters.slice(0, 3).map((starter, index) => (
-                      <button
+                <motion.div 
+                  className="space-y-4 max-w-2xl mx-auto"
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, delay: 1.4 }}
+                >
+                  <p className="text-sm text-muted-foreground/70 font-medium">Try one of these:</p>
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {bot.conversationStarters.slice(0, 3).map((starter: ConversationStarter, index: number) => (
+                      <motion.button
                         key={index}
                         onClick={() => setInput(starter.example)}
-                        className="block w-full max-w-md mx-auto p-3 text-left bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                        className="glass-card p-4 text-left hover-lift group transition-all duration-300"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5, delay: 1.6 + index * 0.1 }}
+                        whileHover={{ scale: 1.02, y: -2 }}
+                        whileTap={{ scale: 0.98 }}
                       >
-                        <div className="font-medium text-gray-900">{starter.title}</div>
-                        <div className="text-sm text-gray-600 mt-1">{starter.example}</div>
-                      </button>
+                        <div className="font-medium text-foreground group-hover:text-primary transition-colors duration-300 mb-2">
+                          {starter.title}
+                        </div>
+                        <div className="text-sm text-muted-foreground leading-relaxed">
+                          {starter.example}
+                        </div>
+                      </motion.button>
                     ))}
                   </div>
-                </div>
+                </motion.div>
               )}
-            </div>
+            </motion.div>
           )}
 
           {Array.isArray(messages) && messages
             // Filter out system/instruction messages with null content - they're not meant for display
             .filter(message => {
-              // Filter out system/instruction messages and null content (these are internal)
-              return message.content && 
-                     message.content !== null && 
-                     message.role !== 'system' && 
-                     message.role !== 'instruction';
+              // More robust filtering - ensure we don't filter out valid assistant responses
+              const hasValidContent = message.content && 
+                                      message.content !== null && 
+                                      Array.isArray(message.content) && 
+                                      message.content.length > 0;
+              const isDisplayableRole = message.role !== 'system' && message.role !== 'instruction';
+              
+              if (!hasValidContent || !isDisplayableRole) {
+                console.log('Filtering out message:', { 
+                  id: message.id, 
+                  role: message.role, 
+                  hasValidContent, 
+                  isDisplayableRole,
+                  contentType: typeof message.content,
+                  contentLength: Array.isArray(message.content) ? message.content.length : 'not array'
+                });
+              }
+              
+              return hasValidContent && isDisplayableRole;
             })
             .map((message) => (
-            <div
+            <motion.div
               key={message.id}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              layout
             >
-              <div className={`max-w-3xl px-4 py-3 rounded-lg ${
-                message.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white border border-gray-200 text-gray-900'
-              }`}>
-                <div className="space-y-2">
+              <motion.div 
+                className={`max-w-3xl relative group ${
+                  message.role === 'user'
+                    ? 'glass-card bg-gradient-to-br from-blue-500/20 to-purple-600/20 border-primary/30 border-l-4 border-l-primary text-foreground shadow-lg shadow-primary/10'
+                    : 'glass-card border-border/50 border-l-4 border-l-muted-foreground/30 text-foreground bg-gradient-to-br from-muted/10 to-muted/20 shadow-lg shadow-muted/10'
+                } px-6 py-4 hover-lift`}
+                whileHover={{ scale: 1.01, y: -1 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+              >
+                {/* Enhanced Message Role Indicator */}
+                <div className={`flex items-center gap-2 mb-3 text-xs font-medium ${
+                  message.role === 'user' 
+                    ? 'text-primary' 
+                    : 'text-muted-foreground'
+                }`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                    message.role === 'user'
+                      ? 'bg-gradient-to-br from-blue-500 to-purple-600 text-white shadow-md'
+                      : 'bg-gradient-to-br from-muted to-muted-foreground/20 text-muted-foreground shadow-md'
+                  }`}>
+                    {message.role === 'user' ? (
+                      <User className="w-3 h-3" />
+                    ) : (
+                      <BotIcon className="w-3 h-3" />
+                    )}
+                  </div>
+                  <span className={message.role === 'user' ? 'text-primary font-semibold' : 'text-muted-foreground'}>
+                    {message.role === 'user' ? 'You' : (bot?.title || 'Assistant')}
+                  </span>
+                </div>
+                
+                <div className="space-y-3">
                   {renderMessageContent(message.content)}
                 </div>
-                <div className={`text-xs mt-2 ${
-                  message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
-                }`}>
-                  {new Date(message.createdAt).toLocaleTimeString()}
+                
+                {/* Message Metadata */}
+                <motion.div 
+                  className={`text-xs mt-4 pt-3 border-t border-border/30 flex items-center justify-between opacity-60 group-hover:opacity-100 transition-opacity duration-300`}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 0.6 }}
+                  whileHover={{ opacity: 1 }}
+                >
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-3 h-3" />
+                    <span>{new Date(message.createdAt).toLocaleTimeString()}</span>
+                  </div>
                   {message.tokenCount && (
-                    <span className="ml-2">• {message.tokenCount} tokens</span>
+                    <div className="flex items-center gap-1">
+                      <Zap className="w-3 h-3" />
+                      <span>{message.tokenCount} tokens</span>
+                    </div>
                   )}
-                </div>
-              </div>
-            </div>
+                </motion.div>
+                
+                {/* Floating Animation on Hover */}
+                <motion.div
+                  className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary/5 to-primary/10 opacity-0 pointer-events-none"
+                  whileHover={{ opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                />
+              </GlassCard>
+            </motion.div>
           ))}
 
           {/* 🚀 INGENIOUS ENHANCEMENT: Knowledge Search Stages Display */}
-          {(isLoading || currentSearchStages.length > 0) && (
+          {knowledgeBaseEnabled && (isLoading || currentSearchStages.length > 0) && (
             <KnowledgeSearchStages 
               stages={currentSearchStages} 
               isLoading={isLoading && currentSearchStages.length === 0}
@@ -1210,7 +1552,7 @@ export function ChatPage() {
           )}
 
           {/* 🚀 INGENIOUS ENHANCEMENT: Source Citations Display */}
-          {((lastChatResponse?.sources && lastChatResponse.sources.length > 0) || 
+          {knowledgeBaseEnabled && ((lastChatResponse?.sources && lastChatResponse.sources.length > 0) || 
             (selectedConversationId && conversationSources[selectedConversationId])) && (
             <SourceCitations 
               sources={lastChatResponse?.sources || conversationSources[selectedConversationId!] || []} 
@@ -1258,31 +1600,75 @@ export function ChatPage() {
           )}
 
           {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-white border border-gray-200 px-4 py-3 rounded-lg">
-                <div className="flex items-center space-x-2">
+            <motion.div 
+              className="flex justify-start"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.3 }}
+            >
+              <motion.div 
+                className="glass-card px-6 py-4 max-w-xs"
+                animate={{ y: [0, -2, 0] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              >
+                <div className="flex items-center space-x-3">
                   <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    <motion.div 
+                      className="w-2 h-2 bg-primary rounded-full"
+                      animate={{ scale: [1, 1.2, 1], opacity: [1, 0.7, 1] }}
+                      transition={{ duration: 1, repeat: Infinity, delay: 0 }}
+                    />
+                    <motion.div 
+                      className="w-2 h-2 bg-primary rounded-full"
+                      animate={{ scale: [1, 1.2, 1], opacity: [1, 0.7, 1] }}
+                      transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
+                    />
+                    <motion.div 
+                      className="w-2 h-2 bg-primary rounded-full"
+                      animate={{ scale: [1, 1.2, 1], opacity: [1, 0.7, 1] }}
+                      transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
+                    />
                   </div>
-                  <span className="text-sm text-gray-500">Thinking...</span>
+                  <motion.span 
+                    className="text-sm text-muted-foreground font-medium"
+                    animate={{ opacity: [0.5, 1, 0.5] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    {bot?.title || 'AI'} is thinking...
+                  </motion.span>
                 </div>
-              </div>
-            </div>
+              </GlassCard>
+            </motion.div>
           )}
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="text-red-800 text-sm">{error}</div>
-            </div>
-          )}
+          <AnimatePresence>
+            {error && (
+              <GlassCard 
+                className="border border-red-400/30 bg-red-500/10 p-4"
+                initial={{ opacity: 0, y: -20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                transition={{ duration: 0.3 }}
+              >
+                <div className="flex items-center gap-3 text-red-400">
+                  <Zap className="w-4 h-4" />
+                  <div className="text-sm font-medium">{error}</div>
+                </div>
+              </GlassCard>
+            )}
+          </AnimatePresence>
 
           <div ref={messagesEndRef} />
-        </div>
+        </motion.div>
 
         {/* Input Form */}
-        <div className="border-t border-gray-200 bg-white p-4">
+        <GlassCard
+          className="border-t border-border/50 p-6"
+          initial={{ y: 100, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.8 }}
+        >
           {/* Extended Thinking Toggle */}
           {currentModelSupportsReasoning() && (
             <div className="mb-4">
@@ -1300,23 +1686,58 @@ export function ChatPage() {
             </div>
           )}
           
-          <form onSubmit={sendMessage} className="flex space-x-3">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={`Message ${bot?.title || 'bot'}...`}
-              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-              disabled={isLoading}
+          {/* Knowledge Base Toggle */}
+          <div className="mb-4">
+            <KnowledgeBaseToggle
+              enabled={knowledgeBaseEnabled}
+              onToggle={setKnowledgeBaseEnabled}
+              className=""
             />
-            <button
+          </div>
+          
+          <form onSubmit={sendMessage} className="flex gap-4">
+            <motion.div 
+              className="flex-1 relative"
+              whileFocus={{ scale: 1.01 }}
+              transition={{ type: "spring", stiffness: 300, damping: 20 }}
+            >
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={`Message ${bot?.title || 'AI assistant'}...`}
+                className="w-full glass-card px-6 py-4 text-foreground placeholder-muted-foreground/60 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base"
+                disabled={isLoading}
+              />
+              {/* Subtle glow effect on focus */}
+              <motion.div
+                className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary/10 to-purple-500/10 opacity-0 pointer-events-none"
+                whileFocus={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+              />
+            </motion.div>
+            
+            <motion.button
               type="submit"
               disabled={isLoading || !input.trim()}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+              className="px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-600 hover:to-purple-700 shadow-lg hover:shadow-xl hover-glow flex items-center gap-2"
+              whileHover={{ scale: isLoading || !input.trim() ? 1 : 1.05 }}
+              whileTap={{ scale: isLoading || !input.trim() ? 1 : 0.95 }}
             >
-              Send
-            </button>
+              {isLoading ? (
+                <motion.div
+                  className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                />
+              ) : (
+                <Send className="w-5 h-5" />
+              )}
+              <span className="hidden sm:inline">
+                {isLoading ? 'Sending...' : 'Send'}
+              </span>
+            </motion.button>
           </form>
-        </div>
+        </GlassCard>
       </div>
 
       {/* New Chat Model Selection Dialog */}

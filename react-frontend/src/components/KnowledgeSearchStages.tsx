@@ -103,17 +103,17 @@ export const KnowledgeSearchStages: React.FC<KnowledgeSearchStagesProps> = ({
   };
 
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+    <div className="glass-card border border-border/30 rounded-lg p-4 mb-4">
       <div className="flex items-center mb-3">
         <div className="flex items-center">
-          <svg className="w-4 h-4 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-primary mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
           </svg>
-          <h3 className="text-sm font-medium text-gray-900">Knowledge Base Search</h3>
+          <h3 className="text-sm font-medium text-foreground">Knowledge Base Search</h3>
         </div>
         {isLoading && (
           <div className="ml-auto">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
           </div>
         )}
       </div>
@@ -127,10 +127,10 @@ export const KnowledgeSearchStages: React.FC<KnowledgeSearchStagesProps> = ({
             
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm font-medium text-foreground">
                   {getStageLabel(stage.stage)}
                 </p>
-                <div className="flex items-center space-x-2 text-xs text-gray-500">
+                <div className="flex items-center space-x-2 text-xs text-muted-foreground">
                   <span>{stage.result_count} results</span>
                   <span>•</span>
                   <span>{formatDuration(stage.duration)}</span>
@@ -138,7 +138,7 @@ export const KnowledgeSearchStages: React.FC<KnowledgeSearchStagesProps> = ({
               </div>
               
               {stage.query && stage.query !== stage.stage && (
-                <p className="text-xs text-gray-600 mt-1 truncate">
+                <p className="text-xs text-muted-foreground mt-1 truncate">
                   Query: {stage.query}
                 </p>
               )}
@@ -146,20 +146,20 @@ export const KnowledgeSearchStages: React.FC<KnowledgeSearchStagesProps> = ({
               {stage.metadata && (
                 <div className="mt-2">
                   {stage.metadata.enhanced_queries && (
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted-foreground">
                       Enhanced: {stage.metadata.enhanced_queries.slice(0, 2).join(', ')}
                       {stage.metadata.enhanced_queries.length > 2 && '...'}
                     </div>
                   )}
                   
                   {stage.metadata.key_terms && (
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted-foreground">
                       Key terms: {stage.metadata.key_terms.join(', ')}
                     </div>
                   )}
                   
                   {stage.metadata.optimization && (
-                    <div className="text-xs text-gray-500">
+                    <div className="text-xs text-muted-foreground">
                       Optimization: {stage.metadata.optimization}
                     </div>
                   )}
@@ -175,12 +175,12 @@ export const KnowledgeSearchStages: React.FC<KnowledgeSearchStagesProps> = ({
               <div className="w-4 h-4 rounded-full bg-blue-500 animate-pulse"></div>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900">Initializing search...</p>
-              <p className="text-xs text-gray-600 mt-1">Preparing to search knowledge base</p>
+              <p className="text-sm font-medium text-foreground">Initializing search...</p>
+              <p className="text-xs text-muted-foreground mt-1">Preparing to search knowledge base</p>
             </div>
           </div>
         )}
       </div>
-    </div>
+    </GlassCard>
   );
 };

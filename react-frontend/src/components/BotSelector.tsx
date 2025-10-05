@@ -40,25 +40,25 @@ export const BotSelector: React.FC<BotSelectorProps> = ({
     <div className={`relative ${className}`} ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center space-x-2 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors w-full text-left"
+        className="flex items-center space-x-2 px-4 py-3 text-sm glass-card hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all duration-300 w-full text-left hover-lift"
       >
         <div className="flex items-center space-x-2 min-w-0 flex-1">
           <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white text-xs font-bold">
             {currentBot?.title?.charAt(0)?.toUpperCase() || 'B'}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="font-medium text-gray-900 truncate">
+            <div className="font-semibold text-foreground truncate">
               {currentBot?.title || 'Select Bot'}
             </div>
             {currentBot && (
-              <div className="text-xs text-gray-500 truncate">
+              <div className="text-xs text-muted-foreground truncate">
                 {currentBot.description}
               </div>
             )}
           </div>
         </div>
         <svg
-          className={`w-4 h-4 text-gray-400 transition-transform ${
+          className={`w-4 h-4 text-muted-foreground transition-transform duration-300 ${
             isOpen ? 'rotate-180' : ''
           }`}
           fill="none"
@@ -70,9 +70,9 @@ export const BotSelector: React.FC<BotSelectorProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-2 glass-card shadow-2xl max-h-80 overflow-y-auto scrollbar-thin">
           {sortedBots.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-gray-500">
+            <div className="px-4 py-3 text-sm text-muted-foreground">
               No bots available
             </div>
           ) : (
@@ -82,8 +82,8 @@ export const BotSelector: React.FC<BotSelectorProps> = ({
                   key={bot.id}
                   to={`/bots/${bot.id}/chat`}
                   onClick={() => setIsOpen(false)}
-                  className={`flex items-center space-x-3 px-4 py-3 text-sm hover:bg-gray-50 transition-colors ${
-                    currentBot?.id === bot.id ? 'bg-blue-50 text-blue-700' : 'text-gray-900'
+                  className={`flex items-center space-x-3 px-4 py-3 text-sm hover:bg-primary/10 transition-all duration-300 rounded-lg mx-2 ${
+                    currentBot?.id === bot.id ? 'bg-primary/20 text-primary border border-primary/30' : 'text-foreground hover-lift'
                   }`}
                 >
                   <div className="flex items-center space-x-3 min-w-0 flex-1">
@@ -99,16 +99,16 @@ export const BotSelector: React.FC<BotSelectorProps> = ({
                           </svg>
                         )}
                       </div>
-                      <div className="text-xs text-gray-500 truncate mt-1">
+                      <div className="text-xs text-muted-foreground truncate mt-1">
                         {bot.description}
                       </div>
-                      <div className="text-xs text-gray-400 mt-1">
+                      <div className="text-xs text-muted-foreground/70 mt-1">
                         Last used: {new Date(bot.lastUsedTime).toLocaleDateString()}
                       </div>
                     </div>
                   </div>
                   {currentBot?.id === bot.id && (
-                    <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                   )}
@@ -117,11 +117,11 @@ export const BotSelector: React.FC<BotSelectorProps> = ({
             </div>
           )}
           
-          <div className="border-t border-gray-200 py-2">
+          <div className="border-t border-border/30 py-2">
             <Link
               to="/bots"
               onClick={() => setIsOpen(false)}
-              className="flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-primary/10 transition-all duration-300 rounded-lg mx-2 hover-lift"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -132,7 +132,7 @@ export const BotSelector: React.FC<BotSelectorProps> = ({
             <Link
               to="/bots/create"
               onClick={() => setIsOpen(false)}
-              className="flex items-center space-x-2 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
+              className="flex items-center space-x-2 px-4 py-2 text-sm text-primary hover:text-primary/80 hover:bg-primary/10 transition-all duration-300 rounded-lg mx-2 hover-lift font-medium"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -140,7 +140,7 @@ export const BotSelector: React.FC<BotSelectorProps> = ({
               <span>Create New Bot</span>
             </Link>
           </div>
-        </div>
+        </GlassCard>
       )}
     </div>
   );

@@ -40,23 +40,23 @@ export const ExtendedThinkingToggle: React.FC<ExtendedThinkingToggleProps> = ({
         <div className="flex items-center space-x-2">
           <button
             onClick={handleToggle}
-            className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-              enabled ? 'bg-blue-600' : 'bg-gray-200'
+            className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-background ${
+              enabled ? 'bg-gradient-to-r from-blue-500 to-purple-600' : 'bg-muted/50'
             }`}
             role="switch"
             aria-checked={enabled}
           >
             <span
-              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full ${enabled ? 'bg-white' : 'bg-foreground'} shadow-lg ring-0 transition duration-200 ease-in-out ${
                 enabled ? 'translate-x-4' : 'translate-x-0'
               }`}
             />
           </button>
           <div>
-            <label className="text-sm font-medium text-gray-700">
+            <label className="text-sm font-semibold text-foreground">
               Extended Thinking
             </label>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Let the model think step-by-step before responding
             </p>
           </div>
@@ -65,7 +65,7 @@ export const ExtendedThinkingToggle: React.FC<ExtendedThinkingToggleProps> = ({
         {enabled && (
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
+            className="text-xs text-primary hover:text-primary/80 transition-colors font-medium"
           >
             {showAdvanced ? 'Hide' : 'Advanced'}
           </button>
@@ -73,9 +73,9 @@ export const ExtendedThinkingToggle: React.FC<ExtendedThinkingToggleProps> = ({
       </div>
 
       {enabled && showAdvanced && (
-        <div className="bg-gray-50 p-3 rounded-md space-y-3">
+        <div className="glass-card p-4 space-y-3 border border-border/30">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="block text-xs font-semibold text-foreground mb-2">
               Thinking Budget: {budgetTokens.toLocaleString()} tokens
             </label>
             <input
@@ -85,21 +85,21 @@ export const ExtendedThinkingToggle: React.FC<ExtendedThinkingToggleProps> = ({
               step={1024}
               value={budgetTokens}
               onChange={(e) => handleBudgetChange(parseInt(e.target.value))}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              className="w-full h-2 bg-muted/30 rounded-lg appearance-none cursor-pointer slider"
             />
-            <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <div className="flex justify-between text-xs text-muted-foreground mt-2">
               <span>1K</span>
               <span>32K</span>
               <span>64K</span>
             </div>
           </div>
           
-          <div className="text-xs text-gray-600 space-y-1">
+          <div className="text-xs text-muted-foreground space-y-1">
             <p>• Higher budgets allow more detailed reasoning</p>
             <p>• Temperature is automatically set to 1.0 for reasoning</p>
             <p>• Reasoning tokens count towards total usage</p>
           </div>
-        </div>
+        </GlassCard>
       )}
     </div>
   );

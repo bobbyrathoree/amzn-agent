@@ -109,6 +109,7 @@ export interface ChatRequest {
   sessionModelId?: string; // Override model for this session
   enableReasoning?: boolean;
   reasoningParams?: ReasoningParams;
+  disableKnowledgeBase?: boolean; // Skip knowledge base search when true
 }
 
 export interface KnowledgeBaseChunk {
