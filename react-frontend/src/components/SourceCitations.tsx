@@ -178,6 +178,6 @@ export const SourceCitations: React.FC<SourceCitationsProps> = ({
           </div>
         </div>
       )}
-    </GlassCard>
+    </div>
   );
 };

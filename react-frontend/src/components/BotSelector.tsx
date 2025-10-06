@@ -140,7 +140,7 @@ export const BotSelector: React.FC<BotSelectorProps> = ({
               <span>Create New Bot</span>
             </Link>
           </div>
-        </GlassCard>
+        </div>
       )}
     </div>
   );

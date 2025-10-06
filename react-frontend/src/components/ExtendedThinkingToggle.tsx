@@ -99,7 +99,7 @@ export const ExtendedThinkingToggle: React.FC<ExtendedThinkingToggleProps> = ({
             <p>• Temperature is automatically set to 1.0 for reasoning</p>
             <p>• Reasoning tokens count towards total usage</p>
           </div>
-        </GlassCard>
+        </div>
       )}
     </div>
   );

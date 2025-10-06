@@ -20,6 +20,7 @@ import {
 import { useAuth } from '../components/AuthProvider';
 import { useApiClient } from '../lib/api';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { GlassCard } from '../components/GlassCard';
 import type { BotSummary, Bot } from '../types';
 
 interface DiscoverFilters {
@@ -283,7 +284,7 @@ export function DiscoverPage() {
             </motion.div>
           </div>
         </div>
-      </GlassCard>
+      </motion.header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
         {/* Modern Search and Filters */}
@@ -357,7 +358,7 @@ export function DiscoverPage() {
               </select>
             </motion.div>
           </div>
-        </GlassCard>
+        </motion.div>
 
         {/* Results Header */}
         <motion.div 

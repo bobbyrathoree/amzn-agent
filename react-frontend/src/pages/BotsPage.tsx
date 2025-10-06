@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { GlassCard } from '../components/GlassCard';
 import { useApiClient } from '../lib/api';
 import type { BotSummary } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -151,7 +152,7 @@ export function BotsPage() {
             </div>
           </div>
         </div>
-      </GlassCard>
+      </motion.header>
 
       {/* Main Content */}
       <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -233,7 +234,7 @@ export function BotsPage() {
               >
                 Try Again
               </motion.button>
-            </GlassCard>
+            </motion.div>
           )}
         </AnimatePresence>
 
@@ -265,15 +266,15 @@ export function BotsPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
-            <motion.div 
+            <motion.div
               className="glass-card w-32 h-32 rounded-full mx-auto mb-8 flex items-center justify-center"
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ duration: 0.6, delay: 0.3, type: "spring", stiffness: 200 }}
             >
               <Bot className="h-16 w-16 text-muted-foreground" />
-            </GlassCard>
-            
+            </motion.div>
+
             <motion.h3 
               className="text-2xl font-bold text-foreground mb-4"
               initial={{ opacity: 0, y: 20 }}
@@ -425,7 +426,7 @@ export function BotsPage() {
                     )}
                   </motion.div>
                 </div>
-              </motion.div>
+              </GlassCard>
             ))}
           </motion.div>
         )}

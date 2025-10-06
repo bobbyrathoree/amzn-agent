@@ -70,7 +70,7 @@ export const KnowledgeBaseToggle: React.FC<KnowledgeBaseToggleProps> = ({
       </div>
       
       {!enabled && (
-        <motion.div 
+        <motion.div
           className="mt-3 pt-3 border-t border-border/30"
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
@@ -81,6 +81,6 @@ export const KnowledgeBaseToggle: React.FC<KnowledgeBaseToggleProps> = ({
           </div>
         </motion.div>
       )}
-    </GlassCard>
+    </motion.div>
   );
 };

@@ -15,6 +15,7 @@ import { useAuth } from '../components/AuthProvider';
 import { useApiClient } from '../lib/api';
 import { BotToolsSelector } from '../components/BotToolsSelector';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { GlassCard } from '../components/GlassCard';
 import { initializeTools } from '../tools';
 import type { 
   CreateBotRequest, 
@@ -460,8 +461,8 @@ export function BotCreatePage() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: 1.2 + index * 0.1 }}
                   >
-                    <motion.div
-                      as={GlassCard}
+                    <GlassCard
+                      as={motion.div}
                       className={`relative w-12 h-12 rounded-xl flex items-center justify-center text-sm font-semibold transition-all duration-300 ${
                         isCompleted
                           ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg'
@@ -485,8 +486,8 @@ export function BotCreatePage() {
                           transition={{ duration: 2, repeat: Infinity }}
                         />
                       )}
-                    </motion.div>
-                    
+                    </GlassCard>
+
                     <span className={`mt-3 text-xs font-medium transition-colors ${
                       isActive ? 'text-primary' : isCompleted ? 'text-green-400' : 'text-muted-foreground'
                     }`}>
@@ -512,7 +513,7 @@ export function BotCreatePage() {
           {/* Error State */}
           <AnimatePresence>
             {error && (
-              <motion.div 
+              <motion.div
                 className="mb-8 glass-card border border-red-400/30 bg-red-500/10 p-4"
                 initial={{ opacity: 0, y: -20, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -525,7 +526,7 @@ export function BotCreatePage() {
                   </div>
                   <div className="font-medium">{error}</div>
                 </div>
-              </GlassCard>
+              </motion.div>
             )}
           </AnimatePresence>
 
@@ -542,7 +543,7 @@ export function BotCreatePage() {
                     as="input"
                     type="text"
                     value={formData.title}
-                    onChange={(e) => handleInputChange('title', e.target.value)}
+                    onChange={(e: any) => handleInputChange('title', e.target.value)}
                     className="w-full px-4 py-3 text-foreground placeholder-muted-foreground/60 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base"
                     placeholder="Enter bot name"
                     required
@@ -556,7 +557,7 @@ export function BotCreatePage() {
                   <GlassCard
                     as="textarea"
                     value={formData.description}
-                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    onChange={(e: any) => handleInputChange('description', e.target.value)}
                     rows={3}
                     className="w-full px-4 py-3 text-foreground placeholder-muted-foreground/60 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base resize-none"
                     placeholder="Brief description of what this bot does"
@@ -570,7 +571,7 @@ export function BotCreatePage() {
                   <GlassCard
                     as="textarea"
                     value={formData.instruction}
-                    onChange={(e) => handleInputChange('instruction', e.target.value)}
+                    onChange={(e: any) => handleInputChange('instruction', e.target.value)}
                     rows={6}
                     className="w-full px-4 py-3 text-foreground placeholder-muted-foreground/60 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base resize-none"
                     placeholder="Detailed instructions for how the bot should behave..."
@@ -585,13 +586,13 @@ export function BotCreatePage() {
                   <GlassCard
                     as="select"
                     value={formData.sharedScope}
-                    onChange={(e) => handleInputChange('sharedScope', e.target.value)}
+                    onChange={(e: any) => handleInputChange('sharedScope', e.target.value)}
                     className="w-full px-4 py-3 text-foreground focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base"
                   >
                     <option value="private">Private (only you)</option>
                     <option value="partial">Shared (specific users/groups)</option>
                     <option value="public">Public (everyone)</option>
-                  </select>
+                  </GlassCard>
                 </div>
               </div>
             )}
@@ -610,7 +611,7 @@ export function BotCreatePage() {
                         name="knowledgeBase"
                         value="none"
                         checked={knowledgeBaseOption === 'none'}
-                        onChange={(e) => setKnowledgeBaseOption(e.target.value as 'none')}
+                        onChange={(e: any) => setKnowledgeBaseOption(e.target.value as 'none')}
                         className="mr-3"
                       />
                       <span className="text-foreground">No Knowledge Base (general AI assistant)</span>
@@ -622,7 +623,7 @@ export function BotCreatePage() {
                         name="knowledgeBase"
                         value="existing"
                         checked={knowledgeBaseOption === 'existing'}
-                        onChange={(e) => setKnowledgeBaseOption(e.target.value as 'existing')}
+                        onChange={(e: any) => setKnowledgeBaseOption(e.target.value as 'existing')}
                         className="mr-3"
                       />
                       <span className="text-foreground">Use Existing Knowledge Base</span>
@@ -634,7 +635,7 @@ export function BotCreatePage() {
                         name="knowledgeBase"
                         value="new"
                         checked={knowledgeBaseOption === 'new'}
-                        onChange={(e) => setKnowledgeBaseOption(e.target.value as 'new')}
+                        onChange={(e: any) => setKnowledgeBaseOption(e.target.value as 'new')}
                         className="mr-3"
                       />
                       <span className="text-foreground">Create New Knowledge Base</span>
@@ -663,7 +664,7 @@ export function BotCreatePage() {
                     <GlassCard
                       as="select"
                       value={formData.existingKnowledgeBaseId || ''}
-                      onChange={(e) => handleInputChange('existingKnowledgeBaseId', e.target.value)}
+                      onChange={(e: any) => handleInputChange('existingKnowledgeBaseId', e.target.value)}
                       className="w-full px-4 py-3 text-foreground focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base"
                     >
                       <option value="">
@@ -674,7 +675,7 @@ export function BotCreatePage() {
                           {kb.name} {kb.description ? `- ${kb.description}` : ''} ({kb.status})
                         </option>
                       ))}
-                    </select>
+                    </GlassCard>
                     {existingKBs.length === 0 && (
                       <p className="text-sm text-muted-foreground mt-1">
                         No Knowledge Bases found. Create one in the AWS Bedrock console first.
@@ -694,7 +695,7 @@ export function BotCreatePage() {
                           type="file"
                           multiple
                           accept=".pdf,.doc,.docx,.txt,.md"
-                          onChange={(e) => handleFileUpload(e.target.files)}
+                          onChange={(e: any) => handleFileUpload(e.target.files)}
                           className="hidden"
                           id="file-upload"
                         />
@@ -759,7 +760,7 @@ export function BotCreatePage() {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                 </svg>
                               </button>
-                            </GlassCard>
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -779,7 +780,7 @@ export function BotCreatePage() {
                   <GlassCard
                     as="select"
                     value={formData.activeModels[0] || ''}
-                    onChange={(e) => handleInputChange('activeModels', [e.target.value])}
+                    onChange={(e: any) => handleInputChange('activeModels', [e.target.value])}
                     className="w-full px-4 py-3 text-foreground focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base"
                   >
                     {availableModels.map((model) => (
@@ -787,7 +788,7 @@ export function BotCreatePage() {
                         {model.name}
                       </option>
                     ))}
-                  </select>
+                  </GlassCard>
                 </div>
 
                 {/* Enhanced Bot Tools Selection */}
@@ -809,7 +810,7 @@ export function BotCreatePage() {
                             type="text"
                             placeholder="Title"
                             value={starter.title}
-                            onChange={(e) => updateConversationStarter(index, 'title', e.target.value)}
+                            onChange={(e: any) => updateConversationStarter(index, 'title', e.target.value)}
                             className="w-full px-4 py-3 text-foreground placeholder-muted-foreground/60 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-sm"
                           />
                           <GlassCard
@@ -817,7 +818,7 @@ export function BotCreatePage() {
                             type="text"
                             placeholder="Example message"
                             value={starter.example}
-                            onChange={(e) => updateConversationStarter(index, 'example', e.target.value)}
+                            onChange={(e: any) => updateConversationStarter(index, 'example', e.target.value)}
                             className="w-full px-4 py-3 text-foreground placeholder-muted-foreground/60 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-sm"
                           />
                         </div>
@@ -855,7 +856,7 @@ export function BotCreatePage() {
                       max="1"
                       step="0.1"
                       value={formData.generationParams.temperature}
-                      onChange={(e) => handleNestedInputChange('generationParams', 'temperature', parseFloat(e.target.value))}
+                      onChange={(e: any) => handleNestedInputChange('generationParams', 'temperature', parseFloat(e.target.value))}
                       className="w-full accent-primary"
                     />
                     <div className="text-xs text-muted-foreground mt-1">
@@ -873,7 +874,7 @@ export function BotCreatePage() {
                       min="100"
                       max="4000"
                       value={formData.generationParams.maxTokens}
-                      onChange={(e) => handleNestedInputChange('generationParams', 'maxTokens', parseInt(e.target.value))}
+                      onChange={(e: any) => handleNestedInputChange('generationParams', 'maxTokens', parseInt(e.target.value))}
                       className="w-full px-4 py-3 text-foreground focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base"
                     />
                   </div>
@@ -887,7 +888,7 @@ export function BotCreatePage() {
                       <input
                         type="checkbox"
                         checked={guardrailsEnabled}
-                        onChange={(e) => setGuardrailsEnabled(e.target.checked)}
+                        onChange={(e: any) => setGuardrailsEnabled(e.target.checked)}
                         className="mr-2 accent-primary"
                       />
                       <span className="text-sm text-foreground">Enable Content Filtering</span>
@@ -912,7 +913,7 @@ export function BotCreatePage() {
                             max="1"
                             step="0.1"
                             value={violenceThreshold}
-                            onChange={(e) => setViolenceThreshold(parseFloat(e.target.value))}
+                            onChange={(e: any) => setViolenceThreshold(parseFloat(e.target.value))}
                             className="w-full accent-primary"
                           />
                           <div className="text-xs text-muted-foreground mt-1">
@@ -930,7 +931,7 @@ export function BotCreatePage() {
                             max="1"
                             step="0.1"
                             value={sexualThreshold}
-                            onChange={(e) => setSexualThreshold(parseFloat(e.target.value))}
+                            onChange={(e: any) => setSexualThreshold(parseFloat(e.target.value))}
                             className="w-full accent-primary"
                           />
                           <div className="text-xs text-muted-foreground mt-1">
@@ -948,7 +949,7 @@ export function BotCreatePage() {
                             max="1"
                             step="0.1"
                             value={hateThreshold}
-                            onChange={(e) => setHateThreshold(parseFloat(e.target.value))}
+                            onChange={(e: any) => setHateThreshold(parseFloat(e.target.value))}
                             className="w-full accent-primary"
                           />
                           <div className="text-xs text-muted-foreground mt-1">
@@ -966,7 +967,7 @@ export function BotCreatePage() {
                             max="1"
                             step="0.1"
                             value={insultsThreshold}
-                            onChange={(e) => setInsultsThreshold(parseFloat(e.target.value))}
+                            onChange={(e: any) => setInsultsThreshold(parseFloat(e.target.value))}
                             className="w-full accent-primary"
                           />
                           <div className="text-xs text-muted-foreground mt-1">
@@ -984,7 +985,7 @@ export function BotCreatePage() {
                             max="1"
                             step="0.1"
                             value={misconductThreshold}
-                            onChange={(e) => setMisconductThreshold(parseFloat(e.target.value))}
+                            onChange={(e: any) => setMisconductThreshold(parseFloat(e.target.value))}
                             className="w-full accent-primary"
                           />
                           <div className="text-xs text-muted-foreground mt-1">
@@ -1007,7 +1008,7 @@ export function BotCreatePage() {
                               max="1"
                               step="0.1"
                               value={groundingThreshold}
-                              onChange={(e) => setGroundingThreshold(parseFloat(e.target.value))}
+                              onChange={(e: any) => setGroundingThreshold(parseFloat(e.target.value))}
                               className="w-full accent-primary"
                             />
                             <div className="text-xs text-muted-foreground mt-1">
@@ -1025,7 +1026,7 @@ export function BotCreatePage() {
                               max="1"
                               step="0.1"
                               value={relevanceThreshold}
-                              onChange={(e) => setRelevanceThreshold(parseFloat(e.target.value))}
+                              onChange={(e: any) => setRelevanceThreshold(parseFloat(e.target.value))}
                               className="w-full accent-primary"
                             />
                             <div className="text-xs text-muted-foreground mt-1">
@@ -1036,7 +1037,7 @@ export function BotCreatePage() {
                       </div>
                     </div>
                   )}
-                </GlassCard>
+                </div>
               </div>
             )}
 
@@ -1149,7 +1150,7 @@ export function BotCreatePage() {
                       </div>
                     </div>
                   </div>
-                </GlassCard>
+                </div>
               </div>
             )}
 
@@ -1209,7 +1210,7 @@ export function BotCreatePage() {
               </div>
             </div>
           </div>
-        </GlassCard>
+        </motion.div>
       </main>
     </div>
   );

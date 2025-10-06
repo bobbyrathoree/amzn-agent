@@ -1,15 +1,19 @@
 
-import { motion, MotionProps } from 'framer-motion';
+import { motion, type MotionProps } from 'framer-motion';
 import React from 'react';
 
-interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {
-  children: React.ReactNode;
+interface GlassCardProps {
+  children?: React.ReactNode;
   className?: string;
   initial?: MotionProps['initial'];
   animate?: MotionProps['animate'];
   transition?: MotionProps['transition'];
   whileHover?: MotionProps['whileHover'];
+  whileTap?: MotionProps['whileTap'];
+  exit?: MotionProps['exit'];
+  layout?: boolean;
   as?: React.ElementType;
+  [key: string]: any;
 }
 
 export const GlassCard: React.FC<GlassCardProps> = ({
@@ -19,6 +23,9 @@ export const GlassCard: React.FC<GlassCardProps> = ({
   animate,
   transition,
   whileHover,
+  whileTap,
+  exit,
+  layout,
   as: Component = 'div',
   ...props
 }) => {
@@ -31,6 +38,9 @@ export const GlassCard: React.FC<GlassCardProps> = ({
       animate={animate}
       transition={transition}
       whileHover={whileHover}
+      whileTap={whileTap}
+      exit={exit}
+      layout={layout}
       {...props}
     >
       {children}

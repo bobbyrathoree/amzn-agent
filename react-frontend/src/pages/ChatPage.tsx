@@ -23,6 +23,7 @@ import { KnowledgeSearchStages } from '../components/KnowledgeSearchStages';
 import { SourceCitations } from '../components/SourceCitations';
 import { ExtendedThinkingToggle } from '../components/ExtendedThinkingToggle';
 import { KnowledgeBaseToggle } from '../components/KnowledgeBaseToggle';
+import { GlassCard } from '../components/GlassCard';
 import { BotSelector } from '../components/BotSelector';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ThemeToggle } from '../components/ThemeToggle';
@@ -1240,14 +1241,14 @@ export function ChatPage() {
                       >
                         <Trash2 className="w-4 h-4" />
                       </motion.button>
-                    </GlassCard>
+                    </motion.div>
                   ))}
                 </div>
               )}
             </motion.div>
           )}
         </AnimatePresence>
-      </GlassCard>
+      </motion.div>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col relative z-10">
@@ -1331,7 +1332,7 @@ export function ChatPage() {
               </motion.button>
             </motion.div>
           </div>
-        </GlassCard>
+        </motion.header>
 
         {/* Messages */}
         <motion.div 
@@ -1500,7 +1501,7 @@ export function ChatPage() {
                   whileHover={{ opacity: 1 }}
                   transition={{ duration: 0.3 }}
                 />
-              </GlassCard>
+              </motion.div>
             </motion.div>
           ))}
 
@@ -1630,7 +1631,7 @@ export function ChatPage() {
                       transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
                     />
                   </div>
-                  <motion.span 
+                  <motion.span
                     className="text-sm text-muted-foreground font-medium"
                     animate={{ opacity: [0.5, 1, 0.5] }}
                     transition={{ duration: 2, repeat: Infinity }}
@@ -1638,7 +1639,7 @@ export function ChatPage() {
                     {bot?.title || 'AI'} is thinking...
                   </motion.span>
                 </div>
-              </GlassCard>
+              </motion.div>
             </motion.div>
           )}
 

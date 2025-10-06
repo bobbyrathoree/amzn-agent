@@ -181,6 +181,6 @@ export const KnowledgeSearchStages: React.FC<KnowledgeSearchStagesProps> = ({
           </div>
         )}
       </div>
-    </GlassCard>
+    </div>
   );
 };
