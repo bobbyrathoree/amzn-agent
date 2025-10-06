@@ -42,7 +42,27 @@ export class FrontendStack extends cdk.Stack {
     const originAccessControl = new cloudfront.S3OriginAccessControl(this, 'OAC', {
       description: 'OAC for AmazonBuddy website bucket',
     });
-    
+
+    // Create CloudFront Function to rewrite /prod/* paths to /* before sending to origin
+    const apiPathRewriteFunction = new cloudfront.Function(this, 'ApiPathRewriteFunction', {
+      functionName: `${props.config.prefix}ApiPathRewrite`,
+      code: cloudfront.FunctionCode.fromFile({
+        filePath: path.join(__dirname, 'edge-functions/api-path-rewrite.js'),
+      }),
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+      comment: 'Strips /prod prefix from API requests before sending to API Gateway',
+    });
+
+    // Create CloudFront Function to prevent error page substitution for API calls
+    const apiErrorFunction = new cloudfront.Function(this, 'ApiErrorFunction', {
+      functionName: `${props.config.prefix}ApiErrorHandler`,
+      code: cloudfront.FunctionCode.fromFile({
+        filePath: path.join(__dirname, 'edge-functions/api-error-handler.js'),
+      }),
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+      comment: 'Prevents error page substitution for API requests',
+    });
+
     // Create CloudFront distribution with proper caching for SPA
     this.distribution = new cloudfront.Distribution(this, 'Distribution', {
       comment: 'AmazonBuddy Frontend Distribution',
@@ -66,18 +86,32 @@ export class FrontendStack extends cdk.Stack {
         }),
       },
       additionalBehaviors: {
-        // API calls - proxy to API Gateway (same-origin, no CORS needed) 
-        '/prod/*': {
+        // API calls - proxy to API Gateway (same-origin, no CORS needed)
+        // Pattern: /{env}/* where env matches the API Gateway stage (dev, prod, staging, etc.)
+        [`/${props.apiGateway.deploymentStage.stageName}/*`]: {
           origin: new origins.HttpOrigin(`${props.apiGateway.restApiId}.execute-api.${this.region}.amazonaws.com`, {
             protocolPolicy: cloudfront.OriginProtocolPolicy.HTTPS_ONLY,
             customHeaders: {
               'X-Debug-Origin': 'API-Gateway-Origin',
             },
+            originPath: `/${props.apiGateway.deploymentStage.stageName}`, // Prepend API Gateway stage to rewritten path
           }),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
           originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
           allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+          functionAssociations: [
+            {
+              // First: Strip environment prefix from request URI (/{env}/path -> /path)
+              function: apiPathRewriteFunction,
+              eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+            },
+            {
+              // Second: Prevent error page substitution for API errors
+              function: apiErrorFunction,
+              eventType: cloudfront.FunctionEventType.VIEWER_RESPONSE,
+            },
+          ],
         },
         // Static assets (JS, CSS, images) - cache aggressively
         '/assets/*': {

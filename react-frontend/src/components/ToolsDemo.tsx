@@ -13,9 +13,9 @@ import type { UniversalTool, ToolResult } from '../types/tools';
 import { PlayIcon, KeyIcon, CogIcon, ChartBarIcon } from '@heroicons/react/24/outline';
 
 export function ToolsDemo() {
-  const { user, getAccessToken } = useAuth();
+  const { user, getAccessToken, environment } = useAuth();
   const getUserId = () => user?.userId || user?.username || null;
-  const apiClient = useApiClient(getAccessToken, getUserId);
+  const apiClient = useApiClient(getAccessToken, getUserId, environment);
   
   // Vault state
   const [vaultService, setVaultService] = useState<APIKeyVaultService | null>(null);

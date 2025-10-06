@@ -3,18 +3,19 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useMountedRef } from '../hooks/useMountedRef';
-import { 
-  WrenchScrewdriverIcon, 
-  ChevronDownIcon, 
-  ChevronUpIcon, 
+import {
+  WrenchScrewdriverIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
-  KeyIcon 
+  KeyIcon
 } from '@heroicons/react/24/outline';
 import { getTool } from '../tools';
 import type { Bot } from '../types';
 import type { UniversalTool } from '../types/tools';
 import { useApiClient } from '../lib/api';
+import { useAuth } from './AuthProvider';
 
 interface BotToolsPanelProps {
   bot: Bot;
@@ -31,11 +32,12 @@ export function BotToolsPanel({ bot, onToolExecute, onStreamingExecute, classNam
   const [selectedTool, setSelectedTool] = useState<UniversalTool | null>(null);
   const [apiKeyStatuses, setApiKeyStatuses] = useState<Record<string, 'available' | 'missing' | 'unknown'>>({});
   const [checkingKeys, setCheckingKeys] = useState(false);
-  
+
   // Track component mount state to prevent memory leaks
   const mountedRef = useMountedRef();
-  
-  const apiClient = useApiClient(getAccessToken, getUserId);
+
+  const { environment } = useAuth();
+  const apiClient = useApiClient(getAccessToken, getUserId, environment);
 
   if (!bot.agentTools || bot.agentTools.length === 0) {
     return null;

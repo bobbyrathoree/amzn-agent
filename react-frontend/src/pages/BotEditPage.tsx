@@ -6,9 +6,9 @@ import type { Bot, GenerationParams } from '../types';
 
 export function BotEditPage() {
   const { botId } = useParams<{ botId: string }>();
-  const { user, signOut, getAccessToken } = useAuth();
+  const { user, signOut, getAccessToken, environment } = useAuth();
   const getUserId = useCallback(() => user?.userId || user?.username || null, [user?.userId, user?.username]);
-  const apiClient = useApiClient(getAccessToken, getUserId);
+  const apiClient = useApiClient(getAccessToken, getUserId, environment);
   
   const [bot, setBot] = useState<Bot | null>(null);
   const [loading, setLoading] = useState(true);

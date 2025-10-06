@@ -9,9 +9,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, MessageCircle, Edit3, Trash2, Plus, Filter, Sparkles, Zap } from 'lucide-react';
 
 export function BotsPage() {
-  const { user, signOut, getAccessToken } = useAuth();
+  const { user, signOut, getAccessToken, environment } = useAuth();
   const getUserId = useCallback(() => user?.userId || user?.username || null, [user?.userId, user?.username]);
-  const apiClient = useApiClient(getAccessToken, getUserId);
+  const apiClient = useApiClient(getAccessToken, getUserId, environment);
   const [bots, setBots] = useState<BotSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

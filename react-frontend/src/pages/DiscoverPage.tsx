@@ -31,9 +31,9 @@ interface DiscoverFilters {
 }
 
 export function DiscoverPage() {
-  const { user, signOut, getAccessToken } = useAuth();
+  const { user, signOut, getAccessToken, environment } = useAuth();
   const getUserId = useCallback(() => user?.userId || user?.username || null, [user?.userId, user?.username]);
-  const apiClient = useApiClient(getAccessToken, getUserId);
+  const apiClient = useApiClient(getAccessToken, getUserId, environment);
   
   // State management
   const [publicBots, setPublicBots] = useState<BotSummary[]>([]);

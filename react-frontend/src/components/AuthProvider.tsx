@@ -19,6 +19,7 @@ interface AuthContextType {
   error: string | null;
   setError: (error: string | null) => void;
   getAccessToken: () => Promise<string | null>;
+  environment: string;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -33,6 +34,7 @@ const AuthContext = createContext<AuthContextType>({
   error: null,
   setError: () => {},
   getAccessToken: async () => null,
+  environment: 'dev',
 });
 
 interface AuthProviderProps {
@@ -223,18 +225,19 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      isLoading, 
-      signIn: handleSignIn, 
+    <AuthContext.Provider value={{
+      user,
+      isLoading,
+      signIn: handleSignIn,
       signOut: handleSignOut,
       signUp: handleSignUp,
       confirmSignUp: handleConfirmSignUp,
-      showLogin, 
+      showLogin,
       setShowLogin,
       error,
       setError,
-      getAccessToken
+      getAccessToken,
+      environment: config?.environment || 'dev'
     }}>
       {children}
     </AuthContext.Provider>

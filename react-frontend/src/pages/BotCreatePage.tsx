@@ -25,9 +25,9 @@ import type {
 } from '../types';
 
 export function BotCreatePage() {
-  const { user, signOut, getAccessToken } = useAuth();
+  const { user, signOut, getAccessToken, environment } = useAuth();
   const getUserId = useCallback(() => user?.userId || user?.username || null, [user?.userId, user?.username]);
-  const apiClient = useApiClient(getAccessToken, getUserId);
+  const apiClient = useApiClient(getAccessToken, getUserId, environment);
   const navigate = useNavigate();
   
   // Form state

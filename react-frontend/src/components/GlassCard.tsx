@@ -1,6 +1,6 @@
 
 import { motion, type MotionProps } from 'framer-motion';
-import React from 'react';
+import React, { useMemo } from 'react';
 
 interface GlassCardProps {
   children?: React.ReactNode;
@@ -29,7 +29,11 @@ export const GlassCard: React.FC<GlassCardProps> = ({
   as: Component = 'div',
   ...props
 }) => {
-  const MotionComponent = motion(Component);
+  // Memoize the motion component to maintain stable component identity across renders.
+  // This prevents React from unmounting/remounting the DOM element when props change,
+  // which is critical for maintaining input focus during typing.
+  // The component is only recreated when the 'as' prop changes (e.g., from 'input' to 'div').
+  const MotionComponent = useMemo(() => motion(Component), [Component]);
 
   return (
     <MotionComponent

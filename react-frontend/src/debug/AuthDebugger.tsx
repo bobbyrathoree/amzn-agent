@@ -3,8 +3,8 @@ import { useAuth } from '../components/AuthProvider';
 import { useApiClient } from '../lib/api';
 
 export function AuthDebugger() {
-  const { user, getAccessToken } = useAuth();
-  const apiClient = useApiClient(getAccessToken, () => user?.userId || user?.username || null);
+  const { user, getAccessToken, environment } = useAuth();
+  const apiClient = useApiClient(getAccessToken, () => user?.userId || user?.username || null, environment);
   const [debugOutput, setDebugOutput] = useState<string>('');
 
   const log = (message: string, data?: any) => {

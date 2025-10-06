@@ -67,14 +67,18 @@ export class ApiClient {
   private getAccessToken: () => Promise<string | null>;
   private getUserId: () => string;
   private streamHandler: ChatStreamHandler;
+  private environment: string;
 
   constructor(
     getAccessToken: () => Promise<string | null>,
-    getUserId: () => string
+    getUserId: () => string,
+    environment?: string
   ) {
     this.getAccessToken = getAccessToken;
     this.getUserId = getUserId;
     this.streamHandler = new ChatStreamHandler();
+    // Default to 'dev' if not provided (for backward compatibility)
+    this.environment = environment || 'dev';
   }
 
   private async getHeaders(): Promise<Record<string, string>> {
@@ -87,9 +91,9 @@ export class ApiClient {
   }
 
   private getUrl(path: string): string {
-    // Use relative URLs - CloudFront will proxy /prod/* to API Gateway
+    // Use relative URLs - CloudFront will proxy /{env}/* to API Gateway
     const cleanPath = path.replace(/^\/+/, ''); // Remove leading slashes
-    return `/prod/${cleanPath}`;
+    return `/${this.environment}/${cleanPath}`;
   }
 
   async get(path: string): Promise<Response> {
@@ -239,13 +243,14 @@ export class ApiClient {
 
 export function useApiClient(
   getAccessToken: () => Promise<string | null>,
-  getUserId: () => string | null
+  getUserId: () => string | null,
+  environment?: string
 ): ApiClient | null {
   return useMemo(() => {
     if (!getUserId()) {
       return null;
     }
-    
-    return new ApiClient(getAccessToken, () => getUserId() || 'unknown');
-  }, [getAccessToken, getUserId]);
+
+    return new ApiClient(getAccessToken, () => getUserId() || 'unknown', environment);
+  }, [getAccessToken, getUserId, environment]);
 }
