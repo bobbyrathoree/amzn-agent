@@ -200,7 +200,7 @@ export const WebSearchTool: UniversalTool = {
   description: 'Search the internet for current information using multiple premium search engines',
   category: 'information',
   version: '2.0.0',
-  author: 'AmazonBuddy Team',
+  author: 'Foundry Team',
   
   capabilities: [
     {

@@ -1705,7 +1705,7 @@ export function ChatPage() {
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={`Message ${bot?.title || 'AI assistant'}...`}
+                placeholder={`Message ${bot?.title || 'bot'}...`}
                 className="w-full glass-card px-6 py-4 text-foreground placeholder-muted-foreground/60 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 outline-none transition-all duration-300 text-base"
                 disabled={isLoading}
               />

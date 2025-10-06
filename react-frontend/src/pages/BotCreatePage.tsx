@@ -431,7 +431,7 @@ export function BotCreatePage() {
               Create New Bot
             </h1>
             <p className="text-muted-foreground text-lg">
-              Build your AI assistant with custom knowledge and capabilities
+              Build your intelligent bot with custom knowledge and capabilities
             </p>
           </motion.div>
 
@@ -614,7 +614,7 @@ export function BotCreatePage() {
                         onChange={(e: any) => setKnowledgeBaseOption(e.target.value as 'none')}
                         className="mr-3"
                       />
-                      <span className="text-foreground">No Knowledge Base (general AI assistant)</span>
+                      <span className="text-foreground">No Knowledge Base (general bot)</span>
                     </label>
                     
                     <label className="flex items-center">
@@ -1144,7 +1144,7 @@ export function BotCreatePage() {
                         )}
                         {knowledgeBaseOption === 'none' && (
                           <p>
-                            Your bot will be created as a general AI assistant without a Knowledge Base.
+                            Your bot will be created as a general bot without a Knowledge Base.
                           </p>
                         )}
                       </div>

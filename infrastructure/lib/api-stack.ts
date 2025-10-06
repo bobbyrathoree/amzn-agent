@@ -53,7 +53,7 @@ export class ApiStack extends cdk.Stack {
     // Create REST API Gateway
     this.apiGateway = new apigateway.RestApi(this, 'RestApi', {
       restApiName: `${props.config.prefix}API`,
-      description: 'API for the AI Chat Platform',
+      description: 'API for the Foundry Bot Platform',
       endpointConfiguration: {
         types: [apigateway.EndpointType.REGIONAL]
       },

@@ -169,15 +169,15 @@ export function BotsPage() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.5 }}
             >
-              My AI Bots
+              My Bots
             </motion.h1>
-            <motion.p 
+            <motion.p
               className="text-muted-foreground text-lg"
               initial={{ opacity: 0, x: -30 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.7 }}
             >
-              Manage and chat with your AI assistants
+              Manage and chat with your intelligent bots
             </motion.p>
           </div>
           
@@ -256,7 +256,7 @@ export function BotsPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
             >
-              Loading your AI bots...
+              Loading your bots...
             </motion.p>
           </motion.div>
         ) : bots.length === 0 ? (
@@ -290,7 +290,7 @@ export function BotsPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.7 }}
             >
-              Create your first AI bot to get started on your journey
+              Create your first bot to get started on your journey
             </motion.p>
             
             <motion.div

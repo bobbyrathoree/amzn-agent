@@ -42,7 +42,7 @@ echo "
 # Function to display usage information
 function display_usage {
     echo "Usage: $0 [OPTION]"
-    echo "Deploy the AI Chat Platform infrastructure"
+    echo "Deploy the Foundry Bot Platform infrastructure"
     echo ""
     echo "Options:"
     echo "  -e, --environment ENV   Deploy to environment (dev, prod) [default: dev]"

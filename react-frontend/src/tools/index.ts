@@ -1,5 +1,5 @@
 // 🛠️ TOOLS REGISTRY - Initialize All Available Tools
-// Central registration point for all AmazonBuddy tools
+// Central registration point for all Foundry tools
 
 import { toolRegistry } from '../services/toolRegistry';
 import { WebSearchTool } from './webSearchTool';

@@ -147,7 +147,7 @@ export class APIKeyVaultService {
       description: options.description,
       tags: options.tags,
       metadata: {
-        createdBy: 'AmazonBuddy',
+        createdBy: 'Foundry',
         version: '1.0'
       }
     };

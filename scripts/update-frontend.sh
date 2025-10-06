@@ -42,9 +42,9 @@ fi
 echo "Frontend build completed successfully!"
 
 # Get all required CloudFormation stack names
-FRONTEND_STACK_NAME="${ENV}-AmazonBuddy-FrontendStack"
-AUTH_STACK_NAME="${ENV}-AmazonBuddy-AuthStack"
-API_STACK_NAME="${ENV}-AmazonBuddy-ApiStack"
+FRONTEND_STACK_NAME="${ENV}-Foundry-FrontendStack"
+AUTH_STACK_NAME="${ENV}-Foundry-AuthStack"
+API_STACK_NAME="${ENV}-Foundry-ApiStack"
 
 # Get S3 bucket name from CloudFormation outputs
 STACK_NAME="$FRONTEND_STACK_NAME"

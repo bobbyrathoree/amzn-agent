@@ -1,6 +1,6 @@
-# AI Chat Platform with AWS Bedrock
+# Foundry - Intelligent Bot Platform with AWS Bedrock
 
-A scalable AI chat platform built on AWS services that leverages AWS Bedrock for generative AI capabilities. This platform enables users to create, manage, and chat with AI bots powered by large language models.
+A scalable bot creation and sharing platform built on AWS services that leverages AWS Bedrock for LLM capabilities. Foundry enables users to create, manage, share, and chat with intelligent bots powered by large language models.
 
 ## Architecture
 
@@ -15,8 +15,9 @@ The system consists of several key components:
 
 ## Features
 
-- Create and manage AI bots
-- Chat with AI bots using various Bedrock models
+- Create and manage intelligent bots
+- Chat with bots using various Bedrock LLM models
+- Share bots publicly or keep them private
 - Integration with Bedrock knowledge bases for RAG (Retrieval Augmented Generation)
 - Real-time chat with streaming responses
 - User authentication and authorization

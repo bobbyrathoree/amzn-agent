@@ -74,7 +74,7 @@ func (s *StackDeploymentService) DeployBotKnowledgeBaseStack(ctx context.Context
 			},
 			{
 				Key:   aws.String("Project"),
-				Value: aws.String("AmazonBuddy"),
+				Value: aws.String("Foundry"),
 			},
 			{
 				Key:   aws.String("BotID"),
@@ -86,7 +86,7 @@ func (s *StackDeploymentService) DeployBotKnowledgeBaseStack(ctx context.Context
 			},
 			{
 				Key:   aws.String("ManagedBy"),
-				Value: aws.String("AmazonBuddy-Backend"),
+				Value: aws.String("Foundry-Backend"),
 			},
 		},
 		Capabilities: []types.Capability{

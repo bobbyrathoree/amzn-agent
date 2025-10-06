@@ -19,7 +19,7 @@ FORCE_YES=false
 usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
-    echo "Deploy AmazonBuddy infrastructure to AWS"
+    echo "Deploy Foundry infrastructure to AWS"
     echo ""
     echo "Options:"
     echo "  -e, --environment ENV    Environment to deploy (dev|prod) [default: dev]"
@@ -87,7 +87,7 @@ echo "/_/  |_/_/ /_/ /_/\__,_/ /___/\____/ /_____/\__,_/\__,_/\__,_/\__, /  "
 echo "                                                             /____/   "
 echo -e "${NC}"
 
-echo -e "${GREEN}🚀 AmazonBuddy Deployment Script${NC}"
+echo -e "${GREEN}🚀 Foundry Deployment Script${NC}"
 echo "================================="
 echo -e "Environment: ${YELLOW}$ENVIRONMENT${NC}"
 echo -e "Region:      ${YELLOW}$REGION${NC}"
@@ -96,7 +96,7 @@ echo ""
 
 # Confirmation prompt
 if [[ "$FORCE_YES" != true ]]; then
-    echo -e "${YELLOW}This will deploy AmazonBuddy infrastructure to the above environment.${NC}"
+    echo -e "${YELLOW}This will deploy Foundry infrastructure to the above environment.${NC}"
     read -p "Continue? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -165,7 +165,7 @@ cd ..
 
 # Step 4: Get deployment outputs
 echo -e "\n${YELLOW}📊 Getting deployment outputs...${NC}"
-STACK_PREFIX="${ENVIRONMENT}-AmazonBuddy-"
+STACK_PREFIX="${ENVIRONMENT}-Foundry-"
 
 # Get stack outputs
 WEBSITE_URL=$(aws cloudformation describe-stacks \
@@ -212,8 +212,8 @@ echo -e "User Pool ID:        ${GREEN}$USER_POOL_ID${NC}"
 echo -e "User Pool Client ID: ${GREEN}$USER_POOL_CLIENT_ID${NC}"
 echo ""
 echo -e "${YELLOW}💡 Next Steps:${NC}"
-echo "1. Visit the website URL to access AmazonBuddy"
+echo "1. Visit the website URL to access Foundry"
 echo "2. Create an account or sign in"
-echo "3. Start creating and chatting with AI bots!"
+echo "3. Start creating and chatting with bots!"
 echo ""
 echo -e "${GREEN}Deployment completed successfully! 🚀${NC}"

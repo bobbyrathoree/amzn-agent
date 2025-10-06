@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Nuke All Stacks Script for AmazonBuddy
+# Nuke All Stacks Script for Foundry
 # This script destroys ALL CloudFormation stacks for the project
 
 set -e
 
-echo "🔥 NUKING ALL STACKS - AmazonBuddy Project 🔥"
+echo "🔥 NUKING ALL STACKS - Foundry Project 🔥"
 echo "=============================================="
 
 # Color codes for output
@@ -72,9 +72,11 @@ delete_stack() {
                 empty_s3_bucket "$website_bucket"
             fi
             
-            # Also try common bucket naming patterns
+            # Also try common bucket naming patterns (including old names)
             empty_s3_bucket "${env}-amazonbuddy-websitebucket"
             empty_s3_bucket "${env}-amazonbuddy-frontend"
+            empty_s3_bucket "${env}-foundry-websitebucket"
+            empty_s3_bucket "${env}-foundry-frontend"
         fi
         
         # Special handling for StorageStack - clean up DynamoDB tables and S3 buckets
@@ -82,21 +84,23 @@ delete_stack() {
             echo -e "${YELLOW}StorageStack detected - cleaning up DynamoDB tables and S3 buckets...${NC}"
             
             # Delete DynamoDB tables (they have RETAIN policy)
-            delete_dynamodb_table "${env}-AmazonBuddy-BotsTable"
-            delete_dynamodb_table "${env}-AmazonBuddy-ConversationsTable" 
-            delete_dynamodb_table "${env}-AmazonBuddy-MessagesTable"
-            delete_dynamodb_table "${env}-AmazonBuddy-Bots"
-            delete_dynamodb_table "${env}-AmazonBuddy-Conversations"
-            delete_dynamodb_table "${env}-AmazonBuddy-Messages"
+            delete_dynamodb_table "${env}-Foundry-BotsTable"
+            delete_dynamodb_table "${env}-Foundry-ConversationsTable"
+            delete_dynamodb_table "${env}-Foundry-MessagesTable"
+            delete_dynamodb_table "${env}-Foundry-Bots"
+            delete_dynamodb_table "${env}-Foundry-Conversations"
+            delete_dynamodb_table "${env}-Foundry-Messages"
             
             # Also try old naming patterns
             delete_dynamodb_table "${env}-AIChatPlatform-BotsTable"
             delete_dynamodb_table "${env}-AIChatPlatform-ConversationsTable"
             delete_dynamodb_table "${env}-AIChatPlatform-MessagesTable"
             
-            # Try common storage bucket naming patterns
+            # Try common storage bucket naming patterns (including old names)
             empty_s3_bucket "${env}-amazonbuddy-storage"
             empty_s3_bucket "${env}-amazonbuddy-uploads"
+            empty_s3_bucket "${env}-foundry-storage"
+            empty_s3_bucket "${env}-foundry-uploads"
         fi
         
         echo -e "${RED}Deleting stack: ${stack_name}${NC}"
@@ -135,6 +139,7 @@ for env in "${ENVIRONMENTS[@]}"; do
         # Try both old and new naming patterns
         delete_stack "${env}-AIChatPlatform-${suffix}" "${env}"
         delete_stack "${env}-AmazonBuddy-${suffix}" "${env}"
+        delete_stack "${env}-Foundry-${suffix}" "${env}"
     done
 done
 
@@ -147,4 +152,4 @@ aws cloudformation list-stacks --region us-east-1 --query 'StackSummaries[?conta
 done
 
 echo -e "\n${GREEN}🎉 ALL STACKS NUKED SUCCESSFULLY! 🎉${NC}"
-echo -e "${GREEN}Ready for fresh deployment of AmazonBuddy${NC}"
+echo -e "${GREEN}Ready for fresh deployment of Foundry${NC}"

@@ -108,22 +108,22 @@ export function HomePage() {
           >
             <h1 className="text-5xl font-bold text-balance sm:text-6xl md:text-7xl lg:text-8xl">
               <span className="bg-gradient-to-r from-foreground via-primary to-foreground bg-clip-text text-transparent">
-                Chat with AI
+                Foundry
               </span>
               <br />
               <span className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl bg-gradient-to-r from-muted-foreground to-primary bg-clip-text text-transparent font-light">
-                Powered by AWS Bedrock
+                Intelligent Bot Creation & Sharing
               </span>
             </h1>
           </motion.div>
           
-          <motion.p 
+          <motion.p
             className="mt-8 max-w-2xl mx-auto text-lg text-muted-foreground sm:text-xl md:text-2xl leading-relaxed text-balance"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.8 }}
           >
-            Create, customize, and chat with AI bots. Leverage the power of large language models 
+            Create, customize, and chat with intelligent bots. Leverage the power of large language models
             with knowledge base integration for enhanced responses.
           </motion.p>
           
@@ -136,7 +136,7 @@ export function HomePage() {
             {[
               { icon: Shield, text: "Enterprise Security" },
               { icon: Zap, text: "Lightning Fast" },
-              { icon: Bot, text: "AI-Powered" }
+              { icon: Bot, text: "LLM-Powered" }
             ].map(({ icon: Icon, text }, index) => (
               <motion.div
                 key={text}
@@ -170,7 +170,7 @@ export function HomePage() {
               {
                 icon: MessageCircle,
                 title: "Smart Conversations",
-                description: "Engage with AI models through an intuitive chat interface with streaming responses.",
+                description: "Engage with LLM-powered bots through an intuitive chat interface with streaming responses.",
                 color: "from-blue-500 to-purple-600"
               },
               {
@@ -182,13 +182,13 @@ export function HomePage() {
               {
                 icon: BookOpen,
                 title: "Knowledge Integration",
-                description: "Enhance AI responses with retrieval-augmented generation using your knowledge bases.",
+                description: "Enhance bot responses with retrieval-augmented generation using your knowledge bases.",
                 color: "from-purple-500 to-pink-600"
               },
               {
                 icon: Bot,
                 title: "Custom Bots",
-                description: "Create and customize AI bots with specific personalities, tools, and knowledge bases.",
+                description: "Create and customize intelligent bots with specific personalities, tools, and knowledge bases.",
                 color: "from-orange-500 to-red-600"
               }
             ].map((feature, index) => {
@@ -239,13 +239,13 @@ export function HomePage() {
               Ready to Transform Your Workflow?
             </motion.h2>
             
-            <motion.p 
+            <motion.p
               className="text-lg text-muted-foreground mb-10 text-balance max-w-2xl mx-auto"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.6, delay: 3 }}
             >
-              Join thousands of users who are already leveraging AI to boost their productivity
+              Join thousands of users who are already leveraging intelligent bots to boost their productivity
             </motion.p>
             
             <div className="space-y-8">

@@ -5,7 +5,7 @@ import type { Message } from '../types';
  * This replaces what Vercel AI SDK would handle automatically
  */
 
-const STORAGE_PREFIX = 'amazonbuddy_chat_';
+const STORAGE_PREFIX = 'foundry_chat_';
 
 export class ChatStorage {
   private static getKey(conversationId: string, suffix: string): string {

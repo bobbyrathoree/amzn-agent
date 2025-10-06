@@ -95,7 +95,7 @@ monitoringStack.addDependency(storageStack);
 // Apply tags to all stacks
 const tags = {
   Environment: env,
-  Project: 'AmazonBuddy',
+  Project: 'Foundry',
   ManagedBy: 'CDK',
 };
 

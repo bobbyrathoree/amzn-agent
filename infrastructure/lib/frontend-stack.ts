@@ -40,7 +40,7 @@ export class FrontendStack extends cdk.Stack {
     
     // Create Origin Access Control (OAC)
     const originAccessControl = new cloudfront.S3OriginAccessControl(this, 'OAC', {
-      description: 'OAC for AmazonBuddy website bucket',
+      description: 'OAC for Foundry website bucket',
     });
 
     // Create CloudFront Function to rewrite /prod/* paths to /* before sending to origin
@@ -65,7 +65,7 @@ export class FrontendStack extends cdk.Stack {
 
     // Create CloudFront distribution with proper caching for SPA
     this.distribution = new cloudfront.Distribution(this, 'Distribution', {
-      comment: 'AmazonBuddy Frontend Distribution',
+      comment: 'Foundry Frontend Distribution',
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(this.websiteBucket, {
           originAccessControl,
@@ -289,9 +289,9 @@ def handler(event, context):
           s3deploy.Source.jsonData('index.html', `
             <!DOCTYPE html>
             <html>
-            <head><title>AmazonBuddy</title></head>
+            <head><title>Foundry</title></head>
             <body>
-              <h1>AmazonBuddy - Build Missing</h1>
+              <h1>Foundry - Build Missing</h1>
               <p>Please run "npm run build" in the react-frontend directory and redeploy.</p>
             </body>
             </html>
@@ -311,7 +311,7 @@ def handler(event, context):
     // Outputs
     new cdk.CfnOutput(this, 'WebsiteURL', {
       value: this.websiteUrl,
-      description: 'AmazonBuddy Website URL',
+      description: 'Foundry Website URL',
       exportName: `${props.config.prefix}WebsiteURL`,
     });
     

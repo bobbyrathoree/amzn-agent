@@ -302,7 +302,7 @@ export const ResearchAssistantTool: UniversalTool = {
   description: 'Conduct comprehensive research on any topic using multiple sources and AI analysis',
   category: 'research',
   version: '2.0.0',
-  author: 'AmazonBuddy Team',
+  author: 'Foundry Team',
   
   capabilities: [
     {
