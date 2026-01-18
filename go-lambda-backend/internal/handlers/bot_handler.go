@@ -136,12 +136,19 @@ func (h *BotHandler) listBots(ctx context.Context, request events.APIGatewayProx
 	if scope == "" {
 		scope = "private" // Default to private bots (user's own bots)
 	}
+
+	// Validate scope parameter
+	validScopes := map[string]bool{"private": true, "public": true, "shared": true, "accessible": true}
+	if !validScopes[scope] {
+		return utils.ErrorResponse(fmt.Errorf("invalid scope: %s. Must be one of: private, public, shared, accessible", scope), http.StatusBadRequest), nil
+	}
+
 	limit := 100 // default
 	if limitStr != "" {
 		fmt.Sscanf(limitStr, "%d", &limit)
 	}
-	
-	// Get bot summaries based on scope  
+
+	// Get bot summaries based on scope
 	summaries, err := h.botService.GetBotSummaries(ctx, userID, userGroups, false, scope, starred, limit)
 	if err != nil {
 		return utils.ErrorResponse(errors.New("Failed to list bots"), http.StatusInternalServerError), nil
@@ -418,10 +425,18 @@ func (h *BotHandler) listSharedBots(ctx context.Context, request events.APIGatew
 // searchBots handles GET /bots/search
 func (h *BotHandler) searchBots(ctx context.Context, request events.APIGatewayProxyRequest, userID string, userGroups []string) (events.APIGatewayProxyResponse, error) {
 	query := request.QueryStringParameters["query"]
-	scope := request.QueryStringParameters["scope"] // public, private, shared, all
-	
+	scope := request.QueryStringParameters["scope"] // public, private, shared, accessible
+
 	if query == "" {
 		return utils.ErrorResponse(errors.New("Query parameter is required"), http.StatusBadRequest), nil
+	}
+
+	// Validate scope parameter if provided
+	if scope != "" {
+		validScopes := map[string]bool{"private": true, "public": true, "shared": true, "accessible": true}
+		if !validScopes[scope] {
+			return utils.ErrorResponse(fmt.Errorf("invalid scope: %s. Must be one of: private, public, shared, accessible", scope), http.StatusBadRequest), nil
+		}
 	}
 
 	// For now, do a simple search using ListBots and filter by title/description

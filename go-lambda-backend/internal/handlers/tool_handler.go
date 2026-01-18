@@ -55,8 +55,8 @@ func (h *ToolHandler) handleGetRequest(ctx context.Context, request events.APIGa
 	switch {
 	case strings.HasSuffix(path, "/tools"):
 		return h.listTools(ctx, request)
-	case strings.Contains(path, "/tools/") && pathParams["toolId"] != "":
-		return h.getTool(ctx, pathParams["toolId"])
+	case strings.Contains(path, "/tools/") && pathParams["id"] != "":
+		return h.getTool(ctx, pathParams["id"])
 	default:
 		return utils.ErrorResponse(utils.ErrorFromString("Endpoint not found"), http.StatusNotFound), nil
 	}

@@ -139,13 +139,13 @@ func (s *BotService) CreateBot(ctx context.Context, req *models.CreateBotRequest
 	} else if req.KnowledgeBaseCreation != nil {
 		// PATH 2: Create new Knowledge Base infrastructure
 		log.Printf("🏗️ Creating new Knowledge Base infrastructure for bot: %s", botID)
-		
+
 		// Set up stack tracking
 		stackName := fmt.Sprintf("BrChatKbStack%s", botID)
 		bot.CloudFormationStackName = &stackName
 		initialStatus := models.StackStatusCreateInProgress
 		bot.StackStatus = &initialStatus
-		
+
 		// Save bot to database with stack in progress
 		log.Printf("💾 BotService.CreateBot: Saving bot to database with stack in progress...")
 		if err := s.botRepo.Create(ctx, bot); err != nil {
@@ -153,18 +153,33 @@ func (s *BotService) CreateBot(ctx context.Context, req *models.CreateBotRequest
 			return nil, fmt.Errorf("failed to create bot record: %w", err)
 		}
 		log.Printf("✅ BotService.CreateBot: Bot saved to database successfully")
-		
+
 		// Start asynchronous stack deployment
 		go s.deployBotKnowledgeBaseStackAsync(context.Background(), botID, ownerUserID, req)
-		
+
 		return &CreateBotResult{
-			Bot:                   bot,
+			Bot:                    bot,
 			StackDeploymentStarted: true,
-			Message:               fmt.Sprintf("Bot created successfully. Knowledge Base infrastructure deployment started (stack: %s). This may take 5-10 minutes.", stackName),
+			Message:                fmt.Sprintf("Bot created successfully. Knowledge Base infrastructure deployment started (stack: %s). This may take 5-10 minutes.", stackName),
 		}, nil
-		
+
 	} else {
-		return nil, ErrKnowledgeBaseRequired
+		// PATH 3: Simple bot without Knowledge Base (no RAG, just LLM chat)
+		log.Printf("💬 Creating simple chatbot without Knowledge Base for user: %s", ownerUserID)
+
+		// Save bot to database
+		log.Printf("💾 BotService.CreateBot: Saving simple bot to database...")
+		if err := s.botRepo.Create(ctx, bot); err != nil {
+			log.Printf("❌ BotService.CreateBot: Failed to save bot to database: %v", err)
+			return nil, fmt.Errorf("failed to create simple bot: %w", err)
+		}
+		log.Printf("✅ BotService.CreateBot: Simple bot saved to database successfully")
+
+		return &CreateBotResult{
+			Bot:                    bot,
+			StackDeploymentStarted: false,
+			Message:                "Simple chatbot created successfully (no Knowledge Base - LLM only mode)",
+		}, nil
 	}
 }
 
@@ -453,12 +468,10 @@ func (s *BotService) validateCreateBotRequest(req *models.CreateBotRequest) erro
 		}
 	}
 	
-	// Either existing KB or creation config must be provided
-	if req.ExistingKnowledgeBaseID == nil && req.KnowledgeBaseCreation == nil {
-		return errors.New("either existing knowledge base ID or creation config is required")
-	}
-	
-	// Can't provide both
+	// Knowledge base is optional - bots can work as simple chatbots without RAG
+	// If neither is provided, bot will function without document retrieval
+
+	// Can't provide both KB options if one is specified
 	if req.ExistingKnowledgeBaseID != nil && req.KnowledgeBaseCreation != nil {
 		return errors.New("cannot provide both existing knowledge base ID and creation config")
 	}

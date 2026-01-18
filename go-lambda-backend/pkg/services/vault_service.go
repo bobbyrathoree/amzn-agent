@@ -21,29 +21,29 @@ type VaultService struct {
 
 // VaultEntry represents an encrypted API key stored in the vault
 type VaultEntry struct {
-	UserID       string    `json:"userId" dynamodb:"userId"`
-	ServiceID    string    `json:"serviceId" dynamodb:"serviceId"`
-	KeyName      string    `json:"keyName" dynamodb:"keyName"`
-	EncryptedKey string    `json:"encryptedKey" dynamodb:"encryptedKey"`
-	Nonce        string    `json:"nonce" dynamodb:"nonce"`
-	Salt         string    `json:"salt" dynamodb:"salt"`
-	CreatedAt    time.Time `json:"createdAt" dynamodb:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt" dynamodb:"updatedAt"`
-	ExpiresAt    *time.Time `json:"expiresAt,omitempty" dynamodb:"expiresAt,omitempty"`
-	LastUsed     *time.Time `json:"lastUsed,omitempty" dynamodb:"lastUsed,omitempty"`
-	UsageCount   int       `json:"usageCount" dynamodb:"usageCount"`
-	IsActive     bool      `json:"isActive" dynamodb:"isActive"`
+	UserID       string    `json:"userId" dynamodb:"UserID"`
+	ServiceID    string    `json:"serviceId" dynamodb:"ServiceID"`
+	KeyName      string    `json:"keyName" dynamodb:"KeyName"`
+	EncryptedKey string    `json:"encryptedKey" dynamodb:"EncryptedKey"`
+	Nonce        string    `json:"nonce" dynamodb:"Nonce"`
+	Salt         string    `json:"salt" dynamodb:"Salt"`
+	CreatedAt    time.Time `json:"createdAt" dynamodb:"CreatedAt"`
+	UpdatedAt    time.Time `json:"updatedAt" dynamodb:"UpdatedAt"`
+	ExpiresAt    *time.Time `json:"expiresAt,omitempty" dynamodb:"ExpiresAt,omitempty"`
+	LastUsed     *time.Time `json:"lastUsed,omitempty" dynamodb:"LastUsed,omitempty"`
+	UsageCount   int       `json:"usageCount" dynamodb:"UsageCount"`
+	IsActive     bool      `json:"isActive" dynamodb:"IsActive"`
 }
 
 // UserSalt represents a user's master salt for key derivation
 type UserSalt struct {
-	UserID     string    `json:"userId" dynamodb:"userId"`
-	RecordType string    `json:"recordType" dynamodb:"recordType"` // Always "MASTER_SALT"
-	Salt       string    `json:"salt" dynamodb:"salt"`
-	CreatedAt  time.Time `json:"createdAt" dynamodb:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt" dynamodb:"updatedAt"`
-	Version    int       `json:"version" dynamodb:"version"`
-	IsActive   bool      `json:"isActive" dynamodb:"isActive"`
+	UserID     string    `json:"userId" dynamodb:"UserID"`
+	RecordType string    `json:"recordType" dynamodb:"ServiceID"` // Uses ServiceID as sort key, value is "MASTER_SALT"
+	Salt       string    `json:"salt" dynamodb:"Salt"`
+	CreatedAt  time.Time `json:"createdAt" dynamodb:"CreatedAt"`
+	UpdatedAt  time.Time `json:"updatedAt" dynamodb:"UpdatedAt"`
+	Version    int       `json:"version" dynamodb:"Version"`
+	IsActive   bool      `json:"isActive" dynamodb:"IsActive"`
 }
 
 // VaultStatus represents the status of a user's vault
@@ -113,7 +113,7 @@ func (s *VaultService) StoreAPIKey(ctx context.Context, userID, serviceID, keyNa
 		TableName: aws.String(s.tableName),
 		Item:      item,
 		// Use condition to prevent overwriting existing keys accidentally
-		ConditionExpression: aws.String("attribute_not_exists(userId) AND attribute_not_exists(serviceId)"),
+		ConditionExpression: aws.String("attribute_not_exists(UserID) AND attribute_not_exists(ServiceID)"),
 	})
 
 	if err != nil {
@@ -130,8 +130,8 @@ func (s *VaultService) GetAPIKey(ctx context.Context, userID, serviceID string) 
 	result, err := s.dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(s.tableName),
 		Key: map[string]types.AttributeValue{
-			"userId":    &types.AttributeValueMemberS{Value: userID},
-			"serviceId": &types.AttributeValueMemberS{Value: serviceID},
+			"UserID":    &types.AttributeValueMemberS{Value: userID},
+			"ServiceID": &types.AttributeValueMemberS{Value: serviceID},
 		},
 	})
 
@@ -165,8 +165,8 @@ func (s *VaultService) GetVaultEntry(ctx context.Context, userID, serviceID stri
 	result, err := s.dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(s.tableName),
 		Key: map[string]types.AttributeValue{
-			"userId":    &types.AttributeValueMemberS{Value: userID},
-			"serviceId": &types.AttributeValueMemberS{Value: serviceID},
+			"UserID":    &types.AttributeValueMemberS{Value: userID},
+			"ServiceID": &types.AttributeValueMemberS{Value: serviceID},
 		},
 	})
 
@@ -195,16 +195,16 @@ func (s *VaultService) UpdateAPIKey(ctx context.Context, userID, serviceID, encr
 	_, err := s.dynamoClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(s.tableName),
 		Key: map[string]types.AttributeValue{
-			"userId":    &types.AttributeValueMemberS{Value: userID},
-			"serviceId": &types.AttributeValueMemberS{Value: serviceID},
+			"UserID":    &types.AttributeValueMemberS{Value: userID},
+			"ServiceID": &types.AttributeValueMemberS{Value: serviceID},
 		},
-		UpdateExpression: aws.String("SET encryptedKey = :key, nonce = :nonce, updatedAt = :updated"),
+		UpdateExpression: aws.String("SET EncryptedKey = :key, Nonce = :nonce, UpdatedAt = :updated"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":key":     &types.AttributeValueMemberS{Value: encryptedKey},
 			":nonce":   &types.AttributeValueMemberS{Value: nonce},
 			":updated": &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
 		},
-		ConditionExpression: aws.String("attribute_exists(userId) AND attribute_exists(serviceId)"),
+		ConditionExpression: aws.String("attribute_exists(UserID) AND attribute_exists(ServiceID)"),
 	})
 
 	if err != nil {
@@ -219,10 +219,10 @@ func (s *VaultService) DeleteAPIKey(ctx context.Context, userID, serviceID strin
 	_, err := s.dynamoClient.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(s.tableName),
 		Key: map[string]types.AttributeValue{
-			"userId":    &types.AttributeValueMemberS{Value: userID},
-			"serviceId": &types.AttributeValueMemberS{Value: serviceID},
+			"UserID":    &types.AttributeValueMemberS{Value: userID},
+			"ServiceID": &types.AttributeValueMemberS{Value: serviceID},
 		},
-		ConditionExpression: aws.String("attribute_exists(userId) AND attribute_exists(serviceId)"),
+		ConditionExpression: aws.String("attribute_exists(UserID) AND attribute_exists(ServiceID)"),
 	})
 
 	if err != nil {
@@ -236,7 +236,7 @@ func (s *VaultService) DeleteAPIKey(ctx context.Context, userID, serviceID strin
 func (s *VaultService) ListAPIKeys(ctx context.Context, userID string) ([]VaultEntry, error) {
 	result, err := s.dynamoClient.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(s.tableName),
-		KeyConditionExpression: aws.String("userId = :userId"),
+		KeyConditionExpression: aws.String("UserID = :userId"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":userId": &types.AttributeValueMemberS{Value: userID},
 		},
@@ -655,8 +655,8 @@ func (s *VaultService) GetUserSalt(ctx context.Context, userID string) (*UserSal
 	result, err := s.dynamoClient.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(s.tableName),
 		Key: map[string]types.AttributeValue{
-			"userId":     &types.AttributeValueMemberS{Value: userID},
-			"recordType": &types.AttributeValueMemberS{Value: "MASTER_SALT"},
+			"UserID":    &types.AttributeValueMemberS{Value: userID},
+			"ServiceID": &types.AttributeValueMemberS{Value: "MASTER_SALT"},
 		},
 	})
 	
@@ -722,7 +722,7 @@ func (s *VaultService) CreateUserSalt(ctx context.Context, userID, salt string) 
 	_, err = s.dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(s.tableName),
 		Item:      item,
-		ConditionExpression: aws.String("attribute_not_exists(userId) AND attribute_not_exists(recordType)"),
+		ConditionExpression: aws.String("attribute_not_exists(UserID) AND attribute_not_exists(ServiceID)"),
 	})
 	
 	if err != nil {
@@ -755,16 +755,16 @@ func (s *VaultService) UpdateUserSalt(ctx context.Context, userID, newSalt strin
 	_, err = s.dynamoClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(s.tableName),
 		Key: map[string]types.AttributeValue{
-			"userId":     &types.AttributeValueMemberS{Value: userID},
-			"recordType": &types.AttributeValueMemberS{Value: "MASTER_SALT"},
+			"UserID":    &types.AttributeValueMemberS{Value: userID},
+			"ServiceID": &types.AttributeValueMemberS{Value: "MASTER_SALT"},
 		},
-		UpdateExpression: aws.String("SET salt = :salt, updatedAt = :updated, version = :version"),
+		UpdateExpression: aws.String("SET Salt = :salt, UpdatedAt = :updated, Version = :version"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":salt":    &types.AttributeValueMemberS{Value: newSalt},
 			":updated": &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
 			":version": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", newVersion)},
 		},
-		ConditionExpression: aws.String("attribute_exists(userId) AND attribute_exists(recordType)"),
+		ConditionExpression: aws.String("attribute_exists(UserID) AND attribute_exists(ServiceID)"),
 	})
 	
 	if err != nil {
@@ -796,15 +796,15 @@ func (s *VaultService) DeactivateUserSalt(ctx context.Context, userID string) er
 	_, err := s.dynamoClient.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(s.tableName),
 		Key: map[string]types.AttributeValue{
-			"userId":     &types.AttributeValueMemberS{Value: userID},
-			"recordType": &types.AttributeValueMemberS{Value: "MASTER_SALT"},
+			"UserID":    &types.AttributeValueMemberS{Value: userID},
+			"ServiceID": &types.AttributeValueMemberS{Value: "MASTER_SALT"},
 		},
-		UpdateExpression: aws.String("SET isActive = :active, updatedAt = :updated"),
+		UpdateExpression: aws.String("SET IsActive = :active, UpdatedAt = :updated"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":active":  &types.AttributeValueMemberBOOL{Value: false},
 			":updated": &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
 		},
-		ConditionExpression: aws.String("attribute_exists(userId) AND attribute_exists(recordType)"),
+		ConditionExpression: aws.String("attribute_exists(UserID) AND attribute_exists(ServiceID)"),
 	})
 	
 	if err != nil {
