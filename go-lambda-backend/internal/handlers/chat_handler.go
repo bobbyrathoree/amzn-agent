@@ -34,6 +34,34 @@ func NewChatHandler(
 	}
 }
 
+// extractUserID extracts user ID from API Gateway request context (Cognito claims)
+func (h *ChatHandler) extractUserID(request events.APIGatewayProxyRequest) string {
+	// Extract from Cognito authorizer context
+	if id, ok := request.RequestContext.Authorizer["sub"].(string); ok && id != "" {
+		return id
+	}
+	if id, ok := request.RequestContext.Authorizer["userId"].(string); ok && id != "" {
+		return id
+	}
+
+	// Check for claims in different format
+	if claims, ok := request.RequestContext.Authorizer["claims"].(map[string]interface{}); ok {
+		if sub, exists := claims["sub"].(string); exists && sub != "" {
+			return sub
+		}
+	}
+
+	// Legacy fallback for headers (development/testing)
+	if id := request.Headers["X-User-ID"]; id != "" {
+		return id
+	}
+	if id := request.Headers["x-user-id"]; id != "" {
+		return id
+	}
+
+	return ""
+}
+
 // HandleBotChat handles POST /bots/{id}/chat requests
 func (h *ChatHandler) HandleBotChat(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	// Extract bot ID from path parameters
@@ -67,7 +95,7 @@ func (h *ChatHandler) HandleBotChat(ctx context.Context, request events.APIGatew
 	}
 
 	// Extract user information from request context
-	userID := request.Headers["x-user-id"]
+	userID := h.extractUserID(request)
 	if userID == "" {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusUnauthorized,
@@ -141,7 +169,7 @@ func (h *ChatHandler) HandleGetBotConversations(ctx context.Context, request eve
 	}
 
 	// Extract user information
-	userID := request.Headers["x-user-id"]
+	userID := h.extractUserID(request)
 	if userID == "" {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusUnauthorized,
@@ -253,7 +281,7 @@ func (h *ChatHandler) HandleStartBotConversation(ctx context.Context, request ev
 	}
 
 	// Extract user information
-	userID := request.Headers["x-user-id"]
+	userID := h.extractUserID(request)
 	if userID == "" {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusUnauthorized,
@@ -366,7 +394,7 @@ func (h *ChatHandler) HandleGetBotConversation(ctx context.Context, request even
 	}
 
 	// Extract user information
-	userID := request.Headers["x-user-id"]
+	userID := h.extractUserID(request)
 	if userID == "" {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusUnauthorized,
@@ -483,7 +511,7 @@ func (h *ChatHandler) HandleDeleteBotConversation(ctx context.Context, request e
 	}
 
 	// Extract user information
-	userID := request.Headers["x-user-id"]
+	userID := h.extractUserID(request)
 	if userID == "" {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusUnauthorized,
@@ -545,7 +573,7 @@ func (h *ChatHandler) HandleDeleteBotConversation(ctx context.Context, request e
 // HandleListAllConversations handles GET /conversations - list all conversations for user
 func (h *ChatHandler) HandleListAllConversations(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	// Extract user information
-	userID := request.Headers["x-user-id"]
+	userID := h.extractUserID(request)
 	if userID == "" {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusUnauthorized,
@@ -613,7 +641,7 @@ func (h *ChatHandler) HandleGetConversationById(ctx context.Context, request eve
 	}
 
 	// Extract user information
-	userID := request.Headers["x-user-id"]
+	userID := h.extractUserID(request)
 	if userID == "" {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusUnauthorized,
@@ -694,7 +722,7 @@ func (h *ChatHandler) HandleDeleteConversationById(ctx context.Context, request 
 	}
 
 	// Extract user information
-	userID := request.Headers["x-user-id"]
+	userID := h.extractUserID(request)
 	if userID == "" {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusUnauthorized,

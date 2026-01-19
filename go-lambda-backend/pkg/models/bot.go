@@ -100,18 +100,18 @@ const (
 
 // GenerationParams contains LLM generation parameters
 type GenerationParams struct {
-	MaxTokens       int      `json:"maxTokens" dynamodbav:"maxTokens" validate:"min=1,max=4096"`
-	Temperature     float64  `json:"temperature" dynamodbav:"temperature" validate:"min=0,max=1"`
-	TopP            float64  `json:"topP" dynamodbav:"topP" validate:"min=0,max=1"`
-	TopK            int      `json:"topK" dynamodbav:"topK" validate:"min=0,max=500"`
+	MaxTokens       int      `json:"maxTokens" dynamodbav:"maxTokens" validate:"omitempty,min=1,max=4096"`
+	Temperature     float64  `json:"temperature" dynamodbav:"temperature" validate:"omitempty,min=0,max=1"`
+	TopP            float64  `json:"topP" dynamodbav:"topP" validate:"omitempty,min=0,max=1"`
+	TopK            int      `json:"topK" dynamodbav:"topK" validate:"omitempty,min=0,max=500"`
 	StopSequences   []string `json:"stopSequences" dynamodbav:"stopSequences"`
 }
 
 // KnowledgeBaseConfig contains knowledge base configuration
 type KnowledgeBaseConfig struct {
-	SearchType      string  `json:"searchType" dynamodbav:"searchType" validate:"oneof=SEMANTIC HYBRID"`
-	MaxResults      int     `json:"maxResults" dynamodbav:"maxResults" validate:"min=1,max=100"`
-	ScoreThreshold  float64 `json:"scoreThreshold" dynamodbav:"scoreThreshold" validate:"min=0,max=1"`
+	SearchType      string  `json:"searchType" dynamodbav:"searchType" validate:"omitempty,oneof=SEMANTIC HYBRID"`
+	MaxResults      int     `json:"maxResults" dynamodbav:"maxResults" validate:"omitempty,min=1,max=100"`
+	ScoreThreshold  float64 `json:"scoreThreshold" dynamodbav:"scoreThreshold" validate:"omitempty,min=0,max=1"`
 }
 
 // ConversationStarter represents a rich conversation starter object (bedrock-chat compatibility)
