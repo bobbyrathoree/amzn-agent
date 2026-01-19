@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -208,6 +209,11 @@ func (s *VaultService) UpdateAPIKey(ctx context.Context, userID, serviceID, encr
 	})
 
 	if err != nil {
+		// Check if the error is due to the key not existing
+		var ccfe *types.ConditionalCheckFailedException
+		if errors.As(err, &ccfe) {
+			return fmt.Errorf("API key not found for service %s", serviceID)
+		}
 		return fmt.Errorf("failed to update API key: %w", err)
 	}
 
@@ -226,6 +232,11 @@ func (s *VaultService) DeleteAPIKey(ctx context.Context, userID, serviceID strin
 	})
 
 	if err != nil {
+		// Check if the error is due to the key not existing
+		var ccfe *types.ConditionalCheckFailedException
+		if errors.As(err, &ccfe) {
+			return fmt.Errorf("API key not found for service %s", serviceID)
+		}
 		return fmt.Errorf("failed to delete API key: %w", err)
 	}
 

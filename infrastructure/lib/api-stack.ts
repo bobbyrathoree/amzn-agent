@@ -429,6 +429,9 @@ export class ApiStack extends cdk.Stack {
     vaultKeyResource.addMethod('GET', new apigateway.LambdaIntegration(vaultLambda), {
       authorizer,
     });
+    vaultKeyResource.addMethod('POST', new apigateway.LambdaIntegration(vaultLambda), {
+      authorizer,
+    });
     vaultKeyResource.addMethod('PUT', new apigateway.LambdaIntegration(vaultLambda), {
       authorizer,
     });

@@ -608,28 +608,29 @@ func (r *BotRepositoryV1) Update(ctx context.Context, botID string, updateReq *m
 	}
 	
 	// Add fields to update expression if they are provided
+	// Note: Field names must match JSON keys (lowercase) used during bot creation
 	if updateReq.Title != nil {
-		updateExpression += ", Title = :title"
+		updateExpression += ", title = :title"
 		expressionAttributeValues[":title"] = &dynamodbv1.AttributeValue{S: updateReq.Title}
 	}
 	if updateReq.Description != nil {
-		updateExpression += ", Description = :description"
+		updateExpression += ", description = :description"
 		expressionAttributeValues[":description"] = &dynamodbv1.AttributeValue{S: updateReq.Description}
 	}
 	if updateReq.Instruction != nil {
-		updateExpression += ", Instruction = :instruction"
+		updateExpression += ", instruction = :instruction"
 		expressionAttributeValues[":instruction"] = &dynamodbv1.AttributeValue{S: updateReq.Instruction}
 	}
 	if updateReq.IsStarred != nil {
-		updateExpression += ", IsStarred = :starred"
+		updateExpression += ", isStarred = :starred"
 		expressionAttributeValues[":starred"] = &dynamodbv1.AttributeValue{BOOL: updateReq.IsStarred}
 	}
 	if updateReq.SharedScope != nil {
-		updateExpression += ", SharedScope = :scope"
+		updateExpression += ", sharedScope = :scope"
 		expressionAttributeValues[":scope"] = &dynamodbv1.AttributeValue{S: updateReq.SharedScope}
 	}
 	if updateReq.SharedStatus != nil {
-		updateExpression += ", SharedStatus = :status"
+		updateExpression += ", sharedStatus = :status"
 		expressionAttributeValues[":status"] = &dynamodbv1.AttributeValue{S: updateReq.SharedStatus}
 	}
 	

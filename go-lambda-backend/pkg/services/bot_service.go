@@ -264,6 +264,11 @@ func (s *BotService) GetBot(ctx context.Context, botID, userID string, userGroup
 		return nil, ErrBotNotFound
 	}
 
+	// Check if bot exists (repository returns nil, nil when not found)
+	if bot == nil {
+		return nil, ErrBotNotFound
+	}
+
 	// Check access permissions using the new 3-tier system
 	if !bot.IsAccessibleByUser(userID, userGroups, isAdmin) {
 		return nil, ErrUnauthorized
@@ -376,7 +381,10 @@ func (s *BotService) UpdateBotSharing(ctx context.Context, botID, userID string,
 	if err != nil {
 		return ErrBotNotFound
 	}
-	
+	if bot == nil {
+		return ErrBotNotFound
+	}
+
 	if !bot.IsEditableByUser(userID, []string{}, false) {
 		return ErrUnauthorized
 	}
