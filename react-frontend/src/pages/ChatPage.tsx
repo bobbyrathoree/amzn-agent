@@ -108,7 +108,9 @@ export function ChatPage() {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   
   // Race condition prevention for message operations
-  const [lastMessageId, setLastMessageId] = useState<string | null>(null);
+  // Using ref instead of state for synchronous updates - state was causing bugs
+  // because React batches state updates, so lastMessageId was stale when checked
+  const lastMessageIdRef = useRef<string | null>(null);
   
   // Session model state (not persisted to DB)
   const [sessionModel, setSessionModel] = useState<string | null>(null);
@@ -661,7 +663,7 @@ export function ChatPage() {
     const userMessage = input.trim();
     // Generate unique ID for this message operation to prevent race conditions
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    setLastMessageId(messageId);
+    lastMessageIdRef.current = messageId;
     
     
     setInput('');
@@ -770,7 +772,7 @@ export function ChatPage() {
       }
       
       // ULTRA-CRITICAL FIX: Display the response immediately to prevent disappearing bug
-      if (conversationId && lastMessageId === messageId && chatResponse.response) {
+      if (conversationId && lastMessageIdRef.current === messageId && chatResponse.response) {
         console.log('IMMEDIATE RESPONSE DISPLAY - Adding assistant message directly');
         
         // Create the assistant message from the response
@@ -812,7 +814,7 @@ export function ChatPage() {
           console.warn('Background conversation sync failed (non-critical):', loadErr);
           // Non-critical since we already displayed the response immediately
         }
-      } else if (conversationId && lastMessageId === messageId && !chatResponse.response) {
+      } else if (conversationId && lastMessageIdRef.current === messageId && !chatResponse.response) {
         console.log('No response text in chatResponse, falling back to conversation reload');
         
         // Fallback for cases where there's no response text (shouldn't happen normally)
@@ -822,8 +824,8 @@ export function ChatPage() {
         } catch (loadErr) {
           console.error('Fallback conversation reload failed:', loadErr);
         }
-      } else if (lastMessageId !== messageId) {
-        console.log('Skipping message processing - newer message in progress:', lastMessageId, 'vs', messageId);
+      } else if (lastMessageIdRef.current !== messageId) {
+        console.log('Skipping message processing - newer message in progress:', lastMessageIdRef.current, 'vs', messageId);
       }
 
     } catch (err) {
