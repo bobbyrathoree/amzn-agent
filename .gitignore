@@ -165,3 +165,7 @@ frontend/next.config.js
 # Backup files
 *.bak
 *.backup
+
+# Playwright MCP screenshots
+.playwright-mcp/
+*.png

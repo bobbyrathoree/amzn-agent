@@ -23,6 +23,7 @@ import { KnowledgeSearchStages } from '../components/KnowledgeSearchStages';
 import { SourceCitations } from '../components/SourceCitations';
 import { ExtendedThinkingToggle } from '../components/ExtendedThinkingToggle';
 import { KnowledgeBaseToggle } from '../components/KnowledgeBaseToggle';
+import { AdvancedSettingsAccordion } from '../components/AdvancedSettingsAccordion';
 import { GlassCard } from '../components/GlassCard';
 import { BotSelector } from '../components/BotSelector';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -216,9 +217,14 @@ export function ChatPage() {
     }
   }, [apiClient]);
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom only when NEW messages are added (not on full refresh)
+  const prevMessagesCountRef = useRef(messages.length);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Only scroll if messages were ADDED (not replaced/cleared)
+    if (messages.length > prevMessagesCountRef.current && messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+    prevMessagesCountRef.current = messages.length;
   }, [messages]);
 
   // Update extended thinking for DeepSeek models
@@ -796,24 +802,17 @@ export function ChatPage() {
           return [...withoutTemp, realUserMessage, assistantMessage];
         });
         
-        // Still reload conversation in background to sync with server, but don't wait for it
-        try {
-          console.log('Background conversation sync:', conversationId, 'messageId:', messageId);
-          setTimeout(() => {
-            loadConversation(conversationId, true);
-          }, 1000); // 1 second delay to ensure server has saved the message
-          console.log('Immediate response display completed for messageId:', messageId);
-          
-          // TITLE GENERATION FIX: Refresh conversation list to pick up title updates
-          // The backend generates titles in background, so we refresh after a short delay
-          setTimeout(() => {
-            console.log('Refreshing conversation list for potential title updates');
-            loadConversations();
-          }, 2000); // 2 second delay to allow backend title generation
-        } catch (loadErr) {
-          console.warn('Background conversation sync failed (non-critical):', loadErr);
-          // Non-critical since we already displayed the response immediately
-        }
+        // REMOVED: Background conversation reload that was causing full re-render
+        // The optimistic update above handles immediate display correctly
+        // We only refresh the conversation LIST (sidebar) for title updates
+        console.log('Immediate response display completed for messageId:', messageId);
+
+        // TITLE GENERATION FIX: Refresh conversation list to pick up title updates
+        // The backend generates titles in background, so we refresh after a short delay
+        setTimeout(() => {
+          console.log('Refreshing conversation list for potential title updates');
+          loadConversations();
+        }, 2000); // 2 second delay to allow backend title generation
       } else if (conversationId && lastMessageIdRef.current === messageId && !chatResponse.response) {
         console.log('No response text in chatResponse, falling back to conversation reload');
         
@@ -1059,7 +1058,7 @@ export function ChatPage() {
                 </GlassCard>
               
                 {/* Bot Tools Panel - NOW WITH CONVERSATION INTEGRATION */}
-                {bot && (
+                {bot && bot.agentTools && bot.agentTools.length > 0 && (
                   <GlassCard className="p-3 rounded-xl">
                     <BotToolsPanel
                   bot={bot}
@@ -1673,31 +1672,32 @@ export function ChatPage() {
           transition={{ duration: 0.6, delay: 0.8 }}
         >
           {/* Extended Thinking Toggle */}
-          {currentModelSupportsReasoning() && (
-            <div className="mb-4">
-              <ExtendedThinkingToggle
-                enabled={extendedThinkingEnabled || getCurrentModel()?.forceReasoningEnabled || false}
-                onToggle={handleExtendedThinkingToggle}
-                disabled={getCurrentModel()?.forceReasoningEnabled}
+          {/* Collapsible Advanced Settings */}
+          <div className="mb-4">
+            <AdvancedSettingsAccordion defaultCollapsed={true}>
+              {currentModelSupportsReasoning() && (
+                <div>
+                  <ExtendedThinkingToggle
+                    enabled={extendedThinkingEnabled || getCurrentModel()?.forceReasoningEnabled || false}
+                    onToggle={handleExtendedThinkingToggle}
+                    disabled={getCurrentModel()?.forceReasoningEnabled}
+                    className=""
+                  />
+                  {getCurrentModel()?.forceReasoningEnabled && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      This model has built-in reasoning that cannot be disabled.
+                    </p>
+                  )}
+                </div>
+              )}
+              <KnowledgeBaseToggle
+                enabled={knowledgeBaseEnabled}
+                onToggle={setKnowledgeBaseEnabled}
                 className=""
               />
-              {getCurrentModel()?.forceReasoningEnabled && (
-                <p className="text-xs text-gray-500 mt-1">
-                  This model has built-in reasoning that cannot be disabled.
-                </p>
-              )}
-            </div>
-          )}
-          
-          {/* Knowledge Base Toggle */}
-          <div className="mb-4">
-            <KnowledgeBaseToggle
-              enabled={knowledgeBaseEnabled}
-              onToggle={setKnowledgeBaseEnabled}
-              className=""
-            />
+            </AdvancedSettingsAccordion>
           </div>
-          
+
           <form onSubmit={sendMessage} className="flex gap-4">
             <motion.div 
               className="flex-1 relative"
