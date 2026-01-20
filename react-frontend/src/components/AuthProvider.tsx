@@ -1,10 +1,9 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getCurrentUser, signIn, signOut, signUp, confirmSignUp, fetchAuthSession } from 'aws-amplify/auth';
 import type { AuthUser } from 'aws-amplify/auth';
 import { configureAmplify } from '../lib/amplify';
-import { useMountedRef } from '../hooks/useMountedRef';
 import type { User, Config } from '../types';
 
 interface AuthContextType {
@@ -48,40 +47,48 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [showLogin, setShowLogin] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Track component mount state to prevent memory leaks
-  const mountedRef = useMountedRef();
+
+  // Use ref to track mounted state for non-effect async operations
+  const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
+    let cancelled = false;
+
+    const checkAuthState = async () => {
+      if (!config) return;
+
+      try {
+        const authUser = await getCurrentUser();
+        const userInfo = await convertAuthUserToUser(authUser);
+
+        if (!cancelled) {
+          setUser(userInfo);
+          setShowLogin(false);
+        }
+      } catch (error) {
+        console.log('No authenticated user found');
+        if (!cancelled) {
+          setUser(null);
+          setShowLogin(true);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
     if (config) {
       configureAmplify(config);
       checkAuthState();
     }
-  }, [config]);
 
-  const checkAuthState = async () => {
-    if (!config || !mountedRef.current) return;
-    
-    try {
-      const authUser = await getCurrentUser();
-      const userInfo = await convertAuthUserToUser(authUser);
-      
-      if (mountedRef.current) {
-        setUser(userInfo);
-        setShowLogin(false);
-      }
-    } catch (error) {
-      console.log('No authenticated user found');
-      if (mountedRef.current) {
-        setUser(null);
-        setShowLogin(true);
-      }
-    } finally {
-      if (mountedRef.current) {
-        setIsLoading(false);
-      }
-    }
-  };
+    return () => {
+      cancelled = true;
+      mountedRef.current = false;
+    };
+  }, [config]);
 
   const convertAuthUserToUser = async (authUser: AuthUser): Promise<User> => {
     try {
@@ -137,9 +144,17 @@ export function AuthProvider({ children, config }: AuthProviderProps) {
         // Test token availability immediately after sign in
         const testToken = await getAccessToken();
         console.log('Token received in AuthProvider:', testToken ? 'Present' : 'Not present');
-        
+
         if (mountedRef.current) {
-          await checkAuthState();
+          // Refresh auth state after successful sign in
+          try {
+            const authUser = await getCurrentUser();
+            const userInfo = await convertAuthUserToUser(authUser);
+            setUser(userInfo);
+            setShowLogin(false);
+          } catch (err) {
+            console.error('Error refreshing auth state:', err);
+          }
         }
         return true;
       } else {

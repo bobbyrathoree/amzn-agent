@@ -13,22 +13,18 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, ''),
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
-            // eslint-disable-next-line no-console
             console.log('proxy error', err);
           });
-          proxy.on('proxyReq', (proxyReq, req, _res) => {
-            // eslint-disable-next-line no-console
-            console.log('Sending Request to the Target:', req.method, req.url);
-            // eslint-disable-next-line no-console
-            console.log('Request Headers:', req.headers);
-            // eslint-disable-next-line no-console
-            console.log('Proxy Request Headers:', proxyReq.getHeaders());
-          });
-          proxy.on('proxyRes', (proxyRes, req, _res) => {
-            // eslint-disable-next-line no-console
-            console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
-            // eslint-disable-next-line no-console
-            console.log('Response Headers:', proxyRes.headers);
+        },
+      },
+      '/development': {
+        // Dev environment API - maps to us-west-2 dev endpoint
+        target: 'https://qzhjqg9q72.execute-api.us-west-2.amazonaws.com/dev',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/development/, ''),
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('proxy error', err);
           });
         },
       }

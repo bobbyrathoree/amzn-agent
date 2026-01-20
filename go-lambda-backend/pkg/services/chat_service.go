@@ -200,18 +200,42 @@ func (s *ChatService) ChatWithBot(ctx context.Context, botID, userID string, use
 	// Build conversation context for AI
 	conversationContext := s.buildConversationContext(conversationHistory)
 	
-	// STEP 3A: Intelligent Knowledge Retrieval with Multi-Stage Search 🚀 INGENIOUS ENHANCEMENT
+	// STEP 3A: Smart KB Routing with Intent Classification 🚀
 	var sources []KnowledgeBaseChunk
 	var knowledgeSearchStages []KnowledgeSearchStage
-	
+
 	if bot.KnowledgeBaseID != nil && *bot.KnowledgeBaseID != "" {
-		log.Printf("🔍 DEBUG: Starting KB search with ID: %s, Config: %+v", *bot.KnowledgeBaseID, bot.KnowledgeBaseConfig)
-		// Progressive knowledge search with multiple strategies
-		_, sources, knowledgeSearchStages, err = s.intelligentKnowledgeRetrieval(ctx, *bot.KnowledgeBaseID, req.Message, conversationHistory, bot.KnowledgeBaseConfig)
-		if err != nil {
-			log.Printf("Warning: Intelligent Knowledge Base retrieval failed: %v", err)
+		// Intent classification to determine if KB search is needed (~100ms with Haiku 4.5)
+		intent, _ := s.classifyUserIntent(ctx, req.Message, bot.Description)
+
+		if intent.NeedsKBSearch {
+			log.Printf("🔍 Intent classifier: KB search needed (intent=%s, confidence=%.2f)",
+				intent.Intent, intent.Confidence)
+			// Progressive knowledge search with multiple strategies
+			_, sources, knowledgeSearchStages, err = s.intelligentKnowledgeRetrieval(ctx,
+				*bot.KnowledgeBaseID, req.Message, conversationHistory, bot.KnowledgeBaseConfig)
+			if err != nil {
+				log.Printf("Warning: Intelligent Knowledge Base retrieval failed: %v", err)
+			}
+			log.Printf("🔍 KB search completed with %d sources, %d stages", len(sources), len(knowledgeSearchStages))
+		} else {
+			log.Printf("⚡ Intent classifier: Skipping KB search (intent=%s, confidence=%.2f)",
+				intent.Intent, intent.Confidence)
+			// Add a search stage indicating skip for frontend visibility
+			knowledgeSearchStages = append(knowledgeSearchStages, KnowledgeSearchStage{
+				Stage:       "intent_classification",
+				Query:       req.Message,
+				ResultCount: 0,
+				Duration:    "~100ms",
+				Success:     true,
+				Metadata: map[string]interface{}{
+					"skipped":    true,
+					"intent":     intent.Intent,
+					"confidence": intent.Confidence,
+					"reason":     "Message classified as not requiring KB search",
+				},
+			})
 		}
-		log.Printf("🔍 DEBUG: KB search completed with %d sources, %d stages", len(sources), len(knowledgeSearchStages))
 	} else {
 		log.Printf("🔍 DEBUG: No knowledge base configured for bot. KnowledgeBaseID: %v", bot.KnowledgeBaseID)
 	}
@@ -951,7 +975,7 @@ func (s *ChatService) shouldUseTool(message string, tools []models.AgentTool) bo
 	}
 
 	message = strings.ToLower(message)
-	
+
 	// Enhanced tool detection based on frontend tool definitions
 	for _, tool := range tools {
 		switch tool.Name {
@@ -976,7 +1000,7 @@ func (s *ChatService) shouldUseTool(message string, tools []models.AgentTool) bo
 			}
 		case "calculator":
 			// Calculator triggers
-			if strings.Contains(message, "calculate") || strings.Contains(message, "math") || 
+			if strings.Contains(message, "calculate") || strings.Contains(message, "math") ||
 			   strings.Contains(message, "+") || strings.Contains(message, "-") ||
 			   strings.Contains(message, "*") || strings.Contains(message, "/") ||
 			   strings.Contains(message, "compute") || strings.Contains(message, "solve") {
@@ -984,8 +1008,77 @@ func (s *ChatService) shouldUseTool(message string, tools []models.AgentTool) bo
 			}
 		}
 	}
-	
+
 	return false
+}
+
+// IntentClassification represents the result of intent classification for KB routing
+type IntentClassification struct {
+	NeedsKBSearch bool    `json:"needsKBSearch"`
+	Intent        string  `json:"intent"`
+	Confidence    float64 `json:"confidence"`
+}
+
+// classifyUserIntent uses Haiku 4.5 for fast intent classification
+// Returns whether KB search is needed based on the user's message
+func (s *ChatService) classifyUserIntent(ctx context.Context, message string, botDescription string) (*IntentClassification, error) {
+	// Short-circuit for very short messages (likely greetings)
+	if len(strings.TrimSpace(message)) < 5 {
+		log.Printf("⚡ Intent classifier: Short message (<5 chars), skipping KB search")
+		return &IntentClassification{
+			NeedsKBSearch: false,
+			Intent:        "greeting",
+			Confidence:    0.95,
+		}, nil
+	}
+
+	classificationPrompt := fmt.Sprintf(`Classify if this user message needs to search a knowledge base about "%s".
+
+User message: "%s"
+
+Rules:
+- needsKBSearch=true: Questions seeking specific information, facts, documentation, how-to, etc.
+- needsKBSearch=false: Greetings, thanks, follow-ups like "what now?", chitchat, meta-questions about the bot itself
+
+Respond ONLY with valid JSON (no markdown):
+{"needsKBSearch": boolean, "intent": "search"|"greeting"|"followup"|"chitchat", "confidence": 0.0-1.0}`, botDescription, message)
+
+	// Use Claude 3.5 Haiku for fast classification (~100ms)
+	classifierModelID := "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+
+	response, _, err := s.callBedrock(ctx, classifierModelID,
+		"You are an intent classifier. Respond only with valid JSON, no markdown.",
+		classificationPrompt,
+		models.GenerationParams{
+			MaxTokens:     100,
+			Temperature:   0.0, // Deterministic for consistency
+			TopP:          1.0,
+			TopK:          1,
+			StopSequences: []string{"\n", "}"},
+		},
+		nil, false)
+
+	if err != nil {
+		log.Printf("⚠️ Intent classification failed, defaulting to KB search: %v", err)
+		return &IntentClassification{NeedsKBSearch: true, Intent: "unknown", Confidence: 0.0}, nil
+	}
+
+	// Ensure response ends with }
+	response = strings.TrimSpace(response)
+	if !strings.HasSuffix(response, "}") {
+		response += "}"
+	}
+
+	var result IntentClassification
+	if err := json.Unmarshal([]byte(response), &result); err != nil {
+		log.Printf("⚠️ Intent classification parse failed, defaulting to KB search: %v", err)
+		return &IntentClassification{NeedsKBSearch: true, Intent: "unknown", Confidence: 0.0}, nil
+	}
+
+	log.Printf("🎯 Intent classification: needsKB=%v, intent=%s, confidence=%.2f for message: %s",
+		result.NeedsKBSearch, result.Intent, result.Confidence, message)
+
+	return &result, nil
 }
 
 // executeTools executes relevant agent tools
@@ -1569,6 +1662,9 @@ func (s *ChatService) convertToInferenceProfile(modelID string) string {
 		"anthropic.claude-3-5-haiku-20241022-v1:0":     "us.anthropic.claude-3-5-haiku-20241022-v1:0",
 		"anthropic.claude-3-haiku-20240307-v1:0":       "us.anthropic.claude-3-haiku-20240307-v1:0",
 		"anthropic.claude-3-opus-20240229-v1:0":        "us.anthropic.claude-3-opus-20240229-v1:0",
+		// Claude Haiku 4.5 for intent classification
+		"anthropic.claude-haiku-4-5-20251001-v1:0":     "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+		"us.anthropic.claude-haiku-4-5-20251001-v1:0":  "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 		
 		// Amazon models  
 		"amazon.nova-pro-v1:0":                         "us.amazon.nova-pro-v1:0",

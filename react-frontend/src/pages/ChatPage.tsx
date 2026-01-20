@@ -1508,9 +1508,10 @@ export function ChatPage() {
 
           {/* 🚀 INGENIOUS ENHANCEMENT: Knowledge Search Stages Display */}
           {knowledgeBaseEnabled && (isLoading || currentSearchStages.length > 0) && (
-            <KnowledgeSearchStages 
-              stages={currentSearchStages} 
+            <KnowledgeSearchStages
+              stages={currentSearchStages}
               isLoading={isLoading && currentSearchStages.length === 0}
+              defaultCollapsed={true}
             />
           )}
 

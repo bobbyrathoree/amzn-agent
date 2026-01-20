@@ -22,6 +22,11 @@ func NewGuardrailService() *GuardrailService {
 // BuildGuardrailConfig builds guardrail configuration for Bedrock API calls
 // This follows the bedrock-chat pattern from compose_args_for_converse_api line 471-481
 func (s *GuardrailService) BuildGuardrailConfig(bot *models.Bot, stream bool) (*types.GuardrailConfiguration, error) {
+	// Check if bot is nil (e.g., when called from intent classification)
+	if bot == nil {
+		return nil, nil
+	}
+
 	// Check if guardrails are configured - matching bedrock-chat's check pattern
 	if bot.GuardrailArn == nil || bot.GuardrailVersion == nil {
 		return nil, nil
@@ -54,7 +59,7 @@ func (s *GuardrailService) BuildGuardrailConfig(bot *models.Bot, stream bool) (*
 
 // ValidateGuardrailConfiguration validates the bot's guardrail configuration
 func (s *GuardrailService) ValidateGuardrailConfiguration(bot *models.Bot) error {
-	if bot.GuardrailArn == nil || bot.GuardrailVersion == nil {
+	if bot == nil || bot.GuardrailArn == nil || bot.GuardrailVersion == nil {
 		return nil // No guardrails configured, which is valid
 	}
 
