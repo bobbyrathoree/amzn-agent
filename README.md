@@ -1,167 +1,134 @@
-# Foundry - Intelligent Bot Platform with AWS Bedrock
+# Foundry - Intelligent Bot Platform
 
-A scalable bot creation and sharing platform built on AWS services that leverages AWS Bedrock for LLM capabilities. Foundry enables users to create, manage, share, and chat with intelligent bots powered by large language models.
-
-## Architecture
-
-The system consists of several key components:
-
-- **Frontend**: Next.js application with Vercel AI SDK integration
-- **Backend**: Go Lambda functions exposed via API Gateway
-- **Storage**: DynamoDB for structured data, S3 for file storage
-- **AI**: AWS Bedrock for large language models and knowledge bases
-- **Authentication**: Amazon Cognito for user management
-- **Networking**: CloudFront for content delivery
+Build, share, and chat with intelligent bots powered by AWS Bedrock and RAG.
 
 ## Features
 
-- Create and manage intelligent bots
-- Chat with bots using various Bedrock LLM models
-- Share bots publicly or keep them private
-- Integration with Bedrock knowledge bases for RAG (Retrieval Augmented Generation)
-- Real-time chat with streaming responses
-- User authentication and authorization
-- Monitoring and alerts
+- **Multi-Model Support** - Claude 4, Claude 3.7 Sonnet, Haiku, Llama, Mistral, Nova, and more
+- **Knowledge Base Integration** - RAG with smart intent classification to skip unnecessary searches
+- **Streaming Chat** - Real-time responses with token-by-token streaming
+- **Bot Tools** - Web search, research assistant, calculator integrations
+- **Guardrails** - Content filtering and safety controls via AWS Bedrock Guardrails
+- **API Key Vault** - Secure storage for bot-specific API credentials
+- **Bot Marketplace** - Share bots publicly or keep them private
+- **Extended Thinking** - Support for Claude's extended thinking mode
+
+## Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  React + Vite   │────▶│   API Gateway   │────▶│  Go Lambdas     │
+│    Frontend     │     │   + WebSocket   │     │  (VPC)          │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+                                                        │
+                        ┌───────────────────────────────┼───────────────────────────────┐
+                        │                               │                               │
+                        ▼                               ▼                               ▼
+                ┌───────────────┐             ┌─────────────────┐             ┌─────────────────┐
+                │   DynamoDB    │             │  AWS Bedrock    │             │   S3 Storage    │
+                │  Bots/Convos  │             │  LLMs + KBs     │             │  Conversations  │
+                └───────────────┘             └─────────────────┘             └─────────────────┘
+```
+
+**Stack:**
+- **Frontend**: React 18, Vite, TailwindCSS, Framer Motion
+- **Backend**: Go 1.21+, AWS Lambda (ARM64), API Gateway
+- **Storage**: DynamoDB, S3
+- **AI**: AWS Bedrock (Claude, Llama, Mistral, Nova), Bedrock Knowledge Bases
+- **Auth**: Amazon Cognito
+- **IaC**: AWS CDK (TypeScript)
+
+## Quick Start
+
+### Prerequisites
+- AWS CLI configured with credentials
+- Node.js 18+
+- Go 1.21+
+
+### Deploy
+
+```bash
+# Clone and deploy to dev environment
+git clone <repo-url>
+cd foundry
+
+# Deploy everything (builds Go, deploys CDK stacks)
+./scripts/deploy.sh
+
+# Or deploy to production
+./scripts/deploy.sh -e prod
+```
+
+### Local Development
+
+```bash
+# Frontend (runs on localhost:5173)
+cd react-frontend
+npm install
+npm run dev
+
+# Backend (build Lambda functions)
+cd go-lambda-backend
+make build
+```
 
 ## Directory Structure
 
 ```
-/
-├── docs/                 # Documentation
-├── frontend/             # Next.js frontend application
+├── react-frontend/       # React + Vite frontend
 ├── go-lambda-backend/    # Go Lambda functions
-├── infrastructure/       # AWS CDK infrastructure code
-├── lambda/               # Built Lambda functions for deployment
-└── scripts/              # Utility scripts for deployment and management
+│   ├── cmd/functions/    # Lambda entry points
+│   ├── pkg/services/     # Business logic
+│   └── internal/         # Handlers
+├── infrastructure/       # AWS CDK stacks
+├── lambda/               # Built Lambda binaries
+└── scripts/              # Deploy/cleanup scripts
 ```
 
-## Prerequisites
+## Configuration
 
-- AWS Account with configured AWS CLI credentials
-- Node.js 18 or later
-- Go 1.20 or later
+### Environment Variables (Frontend)
 
-## Getting Started
+Create `react-frontend/.env.local`:
+```env
+VITE_USER_POOL_ID=us-west-2_xxxxx
+VITE_USER_POOL_CLIENT_ID=xxxxx
+VITE_API_ENDPOINT=https://xxx.execute-api.us-west-2.amazonaws.com/dev
+VITE_WEBSOCKET_ENDPOINT=wss://xxx.execute-api.us-west-2.amazonaws.com/dev
+VITE_AWS_REGION=us-west-2
+```
 
-### Initial Setup
+### CDK Context
 
-1. Clone this repository:
+Deploy with custom domain:
+```bash
+./scripts/deploy.sh -d chat.example.com -c arn:aws:acm:us-east-1:xxx:certificate/xxx
+```
+
+## Scripts
 
 ```bash
-git clone <repository-url>
-cd ai-chat-platform
+# Deploy
+./scripts/deploy.sh -e dev|prod [-d domain] [-c cert-arn] [-s skip-build]
+
+# Cleanup
+./scripts/cleanup.sh -e dev|prod [-f force] [--clean-lambda]
 ```
 
-2. Set up environment variables (optional):
+## API Endpoints
 
-```bash
-cd infrastructure
-cp .env.example .env
-# Edit .env with your values
-```
-
-### Deployment
-
-The deployment script will automatically:
-- Build the Go Lambda functions 
-- Install Node.js dependencies
-- Build the TypeScript CDK code
-- Deploy all stacks to AWS
-
-```bash
-# Deploy to development environment
-./scripts/deploy.sh
-
-# Deploy to production environment
-./scripts/deploy.sh -e prod
-```
-
-### Clean Up Resources
-
-To remove all deployed resources:
-
-```bash
-./scripts/cleanup.sh
-```
-
-## Using the Scripts
-
-### Deployment Script
-
-```bash
-./scripts/deploy.sh --help
-
-Options:
-  -e, --environment ENV   Deploy to environment (dev, prod) [default: dev]
-  -r, --region REGION     AWS region to deploy to [defaults to AWS CLI configured region]
-  -d, --domain DOMAIN     Custom domain name (optional)
-  -c, --cert-arn ARN      ACM certificate ARN for custom domain (optional)
-  -s, --skip-build        Skip building the Go Lambda functions
-  -h, --help              Display this help message
-```
-
-### Cleanup Script
-
-```bash
-./scripts/cleanup.sh --help
-
-Options:
-  -e, --environment ENV   Environment to destroy (dev, prod) [default: dev]
-  -r, --region REGION     AWS region [defaults to AWS CLI configured region]
-  -f, --force             Skip confirmation prompt
-  --clean-lambda          Also clean Lambda function builds
-  -h, --help              Display this help message
-```
-
-## Manual Building
-
-### Go Lambda Functions
-
-You can manually build the Lambda functions:
-
-```bash
-cd go-lambda-backend
-make build  # Builds all functions
-make chat   # Builds only the chat function
-```
-
-### Infrastructure
-
-You can manually build and deploy the infrastructure:
-
-```bash
-cd infrastructure
-npm install
-npm run build
-npm run deploy:dev
-```
-
-## Development
-
-### Frontend Development
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-### Backend Development
-
-```bash
-cd go-lambda-backend
-go mod tidy
-go test ./...
-```
-
-### Infrastructure Development
-
-```bash
-cd infrastructure
-npm install
-npm run diff
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/bots` | List user's bots |
+| POST | `/bots` | Create a bot |
+| GET | `/bots/{id}` | Get bot details |
+| PUT | `/bots/{id}` | Update bot |
+| DELETE | `/bots/{id}` | Delete bot |
+| POST | `/bots/{id}/chat` | Chat with bot |
+| GET | `/bots/{id}/conversations` | List conversations |
+| GET | `/knowledge-bases` | List available KBs |
+| GET/POST | `/vault/{botId}/keys` | Manage API keys |
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT
